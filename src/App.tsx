@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { AppId, GameNotification, HorrorStage } from './types'
+import type { AppId, GameNotification } from './types'
 import { PhoneShell } from './components/phone/PhoneShell'
 import { HomeScreen } from './components/phone/HomeScreen'
 import { NotificationManager } from './components/notifications/NotificationManager'
-import { HorrorOverlay } from './components/horror/HorrorOverlay'
 import { DeveloperPanel } from './components/developer/DeveloperPanel'
 import { MessagesApp } from './components/applications/MessagesApp'
 import { SocialApp } from './components/applications/SocialApp'
@@ -13,6 +12,7 @@ import { ContactsApp } from './components/applications/ContactsApp'
 import { CallsApp } from './components/applications/CallsApp'
 import { WalletApp } from './components/applications/WalletApp'
 import { SettingsApp } from './components/applications/SettingsApp'
+import { useHorrorState } from './hooks/useHorrorState'
 
 const initialUnread: Record<AppId, number> = {
   messages: 2, social: 1, email: 2, browser: 0, contacts: 0, calls: 1, wallet: 0, settings: 0,
@@ -21,14 +21,15 @@ const initialUnread: Record<AppId, number> = {
 function App() {
   const [openedApp, setOpenedApp] = useState<AppId | null>(null)
   const [intro, setIntro] = useState(true)
-  const [horrorStage, setHorrorStage] = useState<HorrorStage>('NORMAL')
   const [notification, setNotification] = useState<GameNotification | null>(null)
   const [unread, setUnread] = useState(initialUnread)
   const [incomingCall, setIncomingCall] = useState(false)
-  const [glitchKey, setGlitchKey] = useState(0)
+  const horror = useHorrorState()
+  const { setStage } = horror
   const isDev = new URLSearchParams(window.location.search).get('dev') === '1'
 
   useEffect(() => {
+    if (isDev) return
     const suspiciousTimer = window.setTimeout(() => {
       setNotification({
         id: 'first-incident',
@@ -38,11 +39,11 @@ function App() {
         timestamp: 'now',
         unreadIncrement: true,
       })
-      setHorrorStage('UNSETTLED')
+      setStage('UNSETTLED')
       setUnread(current => ({ ...current, messages: current.messages + 1 }))
     }, 30000)
     return () => window.clearTimeout(suspiciousTimer)
-  }, [])
+  }, [isDev, setStage])
 
   const openApp = (id: AppId) => {
     setOpenedApp(id)
@@ -58,12 +59,11 @@ function App() {
       timestamp: 'now',
       unreadIncrement: true,
     })
+    setUnread(current => ({ ...current, email: current.email + 1 }))
   }
 
-  const triggerGlitch = () => setGlitchKey(key => key + 1)
-
   const reset = () => {
-    setHorrorStage('NORMAL')
+    horror.reset()
     setNotification(null)
     setIncomingCall(false)
     setOpenedApp(null)
@@ -100,18 +100,24 @@ function App() {
           simulatedTime="11:47"
           onBack={() => openedApp ? setOpenedApp(null) : undefined}
           onHome={() => { setOpenedApp(null); setIncomingCall(false) }}
+          horrorStage={horror.stage}
+          glitchActive={horror.glitchActive}
+          glitchId={horror.glitchId}
+          warningVisible={horror.warningVisible}
+          warningId={horror.warningId}
+          dismissWarning={horror.dismissWarning}
         >
           {openedApp || incomingCall ? renderApp() : <HomeScreen openApp={openApp} unread={unread} />}
           <NotificationManager notification={notification} openApp={openApp} />
         </PhoneShell>
       )}
-      <HorrorOverlay stage={horrorStage} glitchKey={glitchKey} />
       {isDev && (
         <DeveloperPanel
-          setStage={setHorrorStage}
+          selectedStage={horror.stage}
+          setStage={horror.setStage}
           triggerNotification={triggerNotification}
           triggerCall={() => setIncomingCall(true)}
-          triggerGlitch={triggerGlitch}
+          triggerGlitch={horror.triggerGlitch}
           reset={reset}
         />
       )}

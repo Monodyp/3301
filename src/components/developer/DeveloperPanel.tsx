@@ -1,6 +1,7 @@
 import type { HorrorStage } from '../../types'
 
-export function DeveloperPanel({ setStage, triggerNotification, triggerCall, triggerGlitch, reset }: {
+export function DeveloperPanel({ selectedStage, setStage, triggerNotification, triggerCall, triggerGlitch, reset }: {
+  selectedStage: HorrorStage
   setStage: (stage: HorrorStage) => void
   triggerNotification: () => void
   triggerCall: () => void
@@ -13,7 +14,8 @@ export function DeveloperPanel({ setStage, triggerNotification, triggerCall, tri
       <strong>DEV</strong>
       <div className="dev-stage-buttons">
         {stages.map(stage => (
-          <button key={stage} onClick={() => setStage(stage)}>{stage}</button>
+          <button key={stage} className={selectedStage === stage ? 'dev-stage-active' : undefined}
+            aria-pressed={selectedStage === stage} onClick={() => setStage(stage)}>{stage}</button>
         ))}
       </div>
       <button onClick={triggerNotification}>Test notification</button>
