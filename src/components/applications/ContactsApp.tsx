@@ -1,0 +1,38 @@
+import { useState } from 'react'
+import { ArrowLeft, Phone, MessageCircle } from 'lucide-react'
+
+const contacts = [
+  { name: 'Mara Vale', role: 'Digital archivist', color: '#b69bd6' },
+  { name: 'Theo Park', role: 'Transit engineer', color: '#78a9a0' },
+  { name: 'Lena Ortiz', role: 'Journalist', color: '#c88f92' },
+  { name: 'Noah Reed', role: 'Friend', color: '#8397b5' },
+]
+
+export function ContactsApp() {
+  const [selected, setSelected] = useState<number | null>(null)
+  if (selected !== null) {
+    const contact = contacts[selected]
+    return (
+      <div className="app-content contact-detail">
+        <button className="detail-back" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Contacts</button>
+        <div className="large-avatar" style={{ background: contact.color }}>{contact.name[0]}</div>
+        <h2>{contact.name}</h2><p>{contact.role}</p>
+        <div className="contact-actions"><button><Phone size={20} /><span>call</span></button><button><MessageCircle size={20} /><span>message</span></button></div>
+      </div>
+    )
+  }
+  return (
+    <div className="app-content">
+      <div className="app-title-row"><h2>Contacts</h2><button>＋</button></div>
+      <div className="search-field">Search contacts</div>
+      <div className="contact-list">
+        {contacts.map((contact, index) => (
+          <button key={contact.name} onClick={() => setSelected(index)}>
+            <div className="avatar" style={{ background: contact.color }}>{contact.name[0]}</div>
+            <div><strong>{contact.name}</strong><span>{contact.role}</span></div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
