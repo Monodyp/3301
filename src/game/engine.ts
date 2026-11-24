@@ -28,8 +28,8 @@ export type GameAction =
   | { type: 'ENTER_PHONE' }
   | { type: 'TRIGGER_ENCOUNTER' }
   | { type: 'BEGIN_INVESTIGATION'; now: number }
-  | { type: 'INSPECT_ARTIFACT'; artifactId: string }
-  | { type: 'USE_HINT' }
+  | { type: 'INSPECT_ARTIFACT'; artifactId: string; now: number }
+  | { type: 'USE_HINT'; now: number }
   | { type: 'OPEN_DECISION' }
   | { type: 'BACK_TO_INVESTIGATION' }
   | { type: 'CHOOSE'; choiceId: string; now: number }
@@ -79,6 +79,7 @@ export function initialGameState(): GameState {
     accountSecurity: 100,
     runStartedAt: null,
     encounterStartedAt: null,
+    lastProgressAt: null,
     runFinishedAt: null,
   }
 }
@@ -111,6 +112,27 @@ export function orderedChoices(state: GameState): Encounter['choices'] {
 
 export function lastDecision(state: GameState): DecisionRecord | undefined {
   return state.decisionHistory[state.decisionHistory.length - 1]
+}
+
+// When the next hint should appear, as a timestamp in ms, or null if none is due.
+// Hints are for players who are stuck: the clock restarts whenever they find
+// new evidence or get a hint, and hints stop once all key evidence is found.
+// The gap before hint N is its afterSeconds minus the previous hint's
+// (10 s, 20 s, 30 s in the content means one hint per 10 s of being stuck).
+export function nextHintDueAt(state: GameState): number | null {
+  if (state.phase !== 'INVESTIGATION' && state.phase !== 'DECISION') return null
+  const encounter = currentEncounter(state)
+  if (!encounter) return null
+  const used = state.hintsUsed[encounter.id] ?? 0
+  const next = encounter.hints[used]
+  if (!next) return null
+  const keyEvidence = encounter.artifacts.filter(a => a.isKeyEvidence)
+  if (keyEvidence.every(a => state.inspectedArtifacts.includes(a.id))) return null
+  const since = state.lastProgressAt ?? state.encounterStartedAt
+  if (since === null) return null
+  const previousAfter = used > 0 ? encounter.hints[used - 1].afterSeconds : 0
+  const gapSeconds = Math.max(1, next.afterSeconds - previousAfter)
+  return since + gapSeconds * 1000
 }
 
 // ---------------------------------------------------------------- run setup
@@ -168,7 +190,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, phase: 'ENCOUNTER_INTRO' }
 
     case 'BEGIN_INVESTIGATION':
-      return { ...state, phase: 'INVESTIGATION', encounterStartedAt: action.now }
+      return { ...state, phase: 'INVESTIGATION', encounterStartedAt: action.now, lastProgressAt: action.now }
 
     case 'INSPECT_ARTIFACT': {
       const encounter = currentEncounter(state)
@@ -183,6 +205,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         inspectedArtifacts,
+        lastProgressAt: action.now,
         blackoutClues: unlocked ? [...state.blackoutClues, clue.id] : state.blackoutClues,
       }
     }
@@ -192,7 +215,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!encounter) return state
       const used = state.hintsUsed[encounter.id] ?? 0
       if (used >= encounter.hints.length) return state
-      return { ...state, hintsUsed: { ...state.hintsUsed, [encounter.id]: used + 1 } }
+      return { ...state, hintsUsed: { ...state.hintsUsed, [encounter.id]: used + 1 }, lastProgressAt: action.now }
     }
 
     case 'OPEN_DECISION':
@@ -210,9 +233,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'NEXT_ENCOUNTER': {
       const nextIndex = state.currentEncounterIndex + 1
       if (state.completedEncounters.length >= ENCOUNTERS_PER_RUN || nextIndex >= state.encounterQueue.length) {
-        return { ...state, phase: 'FINAL_REVEAL', encounterStartedAt: null }
+        return { ...state, phase: 'FINAL_REVEAL', encounterStartedAt: null, lastProgressAt: null }
       }
-      return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: nextIndex, encounterStartedAt: null }
+      return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: nextIndex, encounterStartedAt: null, lastProgressAt: null }
     }
 
     case 'SHOW_RESULTS':
@@ -221,7 +244,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'DEV_JUMP_TO_ENCOUNTER': {
       if (!state.characterId) return state
       if (action.index < 0 || action.index >= state.encounterQueue.length) return state
-      return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: action.index, encounterStartedAt: null }
+      return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: action.index, encounterStartedAt: null, lastProgressAt: null }
     }
 
     case 'DEV_RESET':

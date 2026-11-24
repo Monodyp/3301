@@ -11,9 +11,11 @@ import {
   currentEncounter,
   gameReducer,
   initialGameState,
+  nextHintDueAt,
   orderedChoices,
   type GameAction,
 } from '../src/game/engine.ts'
+import { UNRECOVERED_TEXT, buildBlackoutReveal } from '../src/game/reveal.ts'
 import { createRng, shuffle } from '../src/game/random.ts'
 import { clueBonus, horrorStageFor, scoreDecision, survivalRating, timeBonus } from '../src/game/scoring.ts'
 import { loadGame, saveGame } from '../src/game/storage.ts'
@@ -33,7 +35,7 @@ function started(seed = 42): GameState {
 function playEncounter(state: GameState, pickCorrect: boolean, seconds = 10): GameState {
   const startAt = T0 + state.currentEncounterIndex * 60_000
   let s = run(state, { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: startAt })
-  for (const a of currentEncounter(s)!.artifacts) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id })
+  for (const a of currentEncounter(s)!.artifacts) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id, now: T0 })
   s = gameReducer(s, { type: 'OPEN_DECISION' })
   const choice = orderedChoices(s).find(c => c.isCorrect === pickCorrect)!
   return run(s, { type: 'CHOOSE', choiceId: choice.id, now: startAt + seconds * 1000 }, { type: 'CONTINUE' })
@@ -159,24 +161,24 @@ test('BC-07 clues unlock from their required artifacts, in any order', () => {
   }
   let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
   const encounter = currentEncounter(s)!
-  s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: encounter.clue.requires[0] })
+  s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: encounter.clue.requires[0], now: T0 })
   if (encounter.clue.requires.length > 1) assert.equal(s.blackoutClues.length, 0)
-  for (const id of encounter.clue.requires) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: id })
+  for (const id of encounter.clue.requires) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: id, now: T0 })
   assert.deepEqual(s.blackoutClues, [encounter.clue.id])
 })
 
 test('artifacts from another encounter cannot be inspected', () => {
   const s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
   const other = CHARACTERS[0].encounters.find(e => e.id !== currentEncounter(s)!.id)!
-  assert.equal(gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: other.artifacts[0].id }), s)
+  assert.equal(gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: other.artifacts[0].id, now: T0 }), s)
 })
 
 test('hints are capped and reduce the clue bonus', () => {
   let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
   const encounter = currentEncounter(s)!
-  for (let i = 0; i < 10; i++) s = gameReducer(s, { type: 'USE_HINT' })
+  for (let i = 0; i < 10; i++) s = gameReducer(s, { type: 'USE_HINT', now: T0 })
   assert.equal(s.hintsUsed[encounter.id], encounter.hints.length)
-  for (const a of encounter.artifacts) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id })
+  for (const a of encounter.artifacts) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id, now: T0 })
   s = gameReducer(s, { type: 'OPEN_DECISION' })
   const correct = orderedChoices(s).find(c => c.isCorrect)!
   s = gameReducer(s, { type: 'CHOOSE', choiceId: correct.id, now: T0 + 10_000 })
@@ -222,4 +224,70 @@ test('horror rises with progress', () => {
   assert.equal(horrorStageFor(4, 0), 'COMPROMISED')
   assert.equal(horrorStageFor(2, 2), 'COMPROMISED', 'mistakes bring it on earlier')
   assert.equal(horrorStageFor(8, 0), 'BLACKOUT')
+})
+
+test('hint timer: one hint per 10 s of being stuck, restarting on progress', () => {
+  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' })
+  assert.equal(nextHintDueAt(s), null, 'no hints before investigating')
+  s = gameReducer(s, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  assert.equal(nextHintDueAt(s), T0 + 10_000)
+
+  const [first, ...rest] = currentEncounter(s)!.artifacts
+  s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: first.id, now: T0 + 4_000 })
+  assert.equal(nextHintDueAt(s), T0 + 14_000, 'finding evidence restarts the clock')
+
+  s = gameReducer(s, { type: 'USE_HINT', now: T0 + 14_000 })
+  assert.equal(nextHintDueAt(s), T0 + 24_000, 'next hint 10 s after the last one')
+
+  s = gameReducer(s, { type: 'OPEN_DECISION' })
+  assert.notEqual(nextHintDueAt(s), null, 'hints keep coming on the decision sheet')
+
+  for (const a of rest) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id, now: T0 + 25_000 })
+  assert.equal(nextHintDueAt(s), null, 'no hints once all key evidence is found')
+})
+
+test('hint timer stops when hints run out or the encounter ends', () => {
+  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  for (let i = 0; i < 3; i++) s = gameReducer(s, { type: 'USE_HINT', now: T0 + i })
+  assert.equal(nextHintDueAt(s), null)
+  s = gameReducer(s, { type: 'OPEN_DECISION' })
+  s = gameReducer(s, { type: 'CHOOSE', choiceId: orderedChoices(s)[0].id, now: T0 + 30_000 })
+  assert.equal(nextHintDueAt(s), null)
+})
+
+test('reveal: same layout in every encounter order', () => {
+  const layouts = new Set<string>()
+  for (let seed = 1; seed <= 30; seed++) {
+    const s = playWholeRun(started(seed), Array(8).fill(true))
+    const reveal = buildBlackoutReveal(s)!
+    layouts.add(reveal.fragments.map(f => `${f.archetype}:${f.clueId}:${f.text}`).join('|'))
+    assert.equal(reveal.recoveredCount, 8)
+    assert.equal(reveal.currentProfile, 'MIKA')
+  }
+  assert.equal(layouts.size, 1)
+})
+
+test('reveal still works when the player recovered nothing', () => {
+  let s = started(8)
+  for (let i = 0; i < 8; i++) {
+    s = run(s, { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+    s = run(s, { type: 'CHOOSE', choiceId: orderedChoices(s)[0].id, now: T0 + 5000 }, { type: 'CONTINUE' }, { type: 'NEXT_ENCOUNTER' })
+  }
+  assert.equal(s.phase, 'FINAL_REVEAL')
+  const reveal = buildBlackoutReveal(s)!
+  assert.equal(reveal.fragments.length, 8)
+  assert.equal(reveal.recoveredCount, 0)
+  assert.ok(reveal.fragments.every(f => f.text === UNRECOVERED_TEXT))
+  assert.deepEqual(reveal.finalLines, ['You thought you were investigating them.', 'You were investigating us.'])
+  assert.equal(reveal.closingLine, 'CONNECTION TERMINATED.')
+})
+
+test('horror follows progress through a real run', () => {
+  let s = started(4)
+  const stages: string[] = []
+  for (let i = 0; i < 8; i++) {
+    s = gameReducer(playEncounter(s, true), { type: 'NEXT_ENCOUNTER' })
+    stages.push(horrorStageFor(s.completedEncounters.length, 0))
+  }
+  assert.deepEqual(stages, ['UNSETTLED', 'UNSETTLED', 'UNSETTLED', 'COMPROMISED', 'COMPROMISED', 'COMPROMISED', 'COMPROMISED', 'BLACKOUT'])
 })

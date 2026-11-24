@@ -135,3 +135,6 @@ button { color: inherit; cursor: pointer; }
 .engine-note{margin:0;color:#b9bec7;line-height:1.35}
 .engine-panel .engine-done{border-color:#4c7a5a;color:#a9dcb6}
 .engine-panel .engine-danger{color:#d68b8b}
+.engine-check{display:flex;align-items:center;gap:6px;color:#b9bec7}
+.engine-check input{min-height:auto}
+.engine-muted{opacity:.5}

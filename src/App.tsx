@@ -14,6 +14,7 @@ import { WalletApp } from './components/applications/WalletApp'
 import { SettingsApp } from './components/applications/SettingsApp'
 import { useHorrorState } from './hooks/useHorrorState'
 import { useGame } from './game/useGame'
+import { useGameEffects } from './game/useGameEffects'
 import { EnginePanel } from './components/developer/EnginePanel'
 
 const initialUnread: Record<AppId, number> = {
@@ -27,9 +28,11 @@ function App() {
   const [unread, setUnread] = useState(initialUnread)
   const [incomingCall, setIncomingCall] = useState(false)
   const horror = useHorrorState()
-  const { setStage } = horror
   const game = useGame()
   const isDev = new URLSearchParams(window.location.search).get('dev') === '1'
+  // In dev mode encounters wait for the panel's Trigger button unless auto pace is on.
+  const [devAutoPace, setDevAutoPace] = useState(false)
+  useGameEffects(game, horror, { autoPace: !isDev || devAutoPace })
 
   useEffect(() => {
     if (isDev) return
@@ -42,11 +45,11 @@ function App() {
         timestamp: 'now',
         unreadIncrement: true,
       })
-      setStage('UNSETTLED')
+      // Horror stage now follows game progress (useGameEffects), not this timer.
       setUnread(current => ({ ...current, messages: current.messages + 1 }))
     }, 30000)
     return () => window.clearTimeout(suspiciousTimer)
-  }, [isDev, setStage])
+  }, [isDev])
 
   const openApp = (id: AppId) => {
     setOpenedApp(id)
@@ -124,7 +127,7 @@ function App() {
           reset={reset}
         />
       )}
-      {isDev && <EnginePanel game={game} />}
+      {isDev && <EnginePanel game={game} autoPace={devAutoPace} setAutoPace={setDevAutoPace} />}
     </div>
   )
 }

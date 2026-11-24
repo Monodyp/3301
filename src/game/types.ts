@@ -186,6 +186,7 @@ export interface GameState {
   accountSecurity: number // 0–100
   runStartedAt: number | null
   encounterStartedAt: number | null // when investigation began
+  lastProgressAt: number | null // last new evidence or hint; hints wait for the player to stall after this
   runFinishedAt: number | null
 }
 
