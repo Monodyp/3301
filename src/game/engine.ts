@@ -3,7 +3,7 @@
 // Every change goes through gameReducer(state, action). Actions that are not
 // allowed in the current phase are ignored (the same state object comes back),
 // so a double tap or a stale button can never skip ahead, complete an encounter
-// twice, or show the final reveal early. Use canDispatch() to grey out buttons.
+// twice, or finish the run early. Use canDispatch() to grey out buttons.
 //
 // The reducer is pure: time comes in on the action (`now`, in ms) and
 // randomness comes from the run's seed. That makes every run replayable.
@@ -20,7 +20,7 @@ import { CHARACTERS } from './content/index.ts'
 import { createRng, pick, shuffle } from './random.ts'
 import { scoreDecision } from './scoring.ts'
 
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 export const ENCOUNTERS_PER_RUN = 8
 
 export type GameAction =
@@ -34,9 +34,9 @@ export type GameAction =
   | { type: 'BACK_TO_INVESTIGATION' }
   | { type: 'CHOOSE'; choiceId: string; now: number }
   | { type: 'CONTINUE' } // CONSEQUENCE -> ENCOUNTER_COMPLETE
-  | { type: 'NEXT_ENCOUNTER' } // ENCOUNTER_COMPLETE -> PHONE_IDLE or FINAL_REVEAL
-  | { type: 'SHOW_RESULTS'; now: number }
+  | { type: 'NEXT_ENCOUNTER'; now: number } // ENCOUNTER_COMPLETE -> PHONE_IDLE or RESULTS
   | { type: 'PLAY_AGAIN'; seed: number; now: number }
+  | { type: 'COMPLETE_SECURITY_TASK'; taskId: string }
   // Dev-panel only:
   | { type: 'DEV_JUMP_TO_ENCOUNTER'; index: number }
   | { type: 'DEV_RESET' }
@@ -44,14 +44,13 @@ export type GameAction =
 // Which actions each phase accepts. Anything else is ignored.
 const ALLOWED: Record<GamePhase, readonly GameAction['type'][]> = {
   MAIN_MENU: ['START_RUN'],
-  CHARACTER_ASSIGNMENT: ['ENTER_PHONE'],
-  PHONE_IDLE: ['TRIGGER_ENCOUNTER'],
-  ENCOUNTER_INTRO: ['BEGIN_INVESTIGATION'],
-  INVESTIGATION: ['INSPECT_ARTIFACT', 'USE_HINT', 'OPEN_DECISION'],
-  DECISION: ['INSPECT_ARTIFACT', 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE'],
-  CONSEQUENCE: ['CONTINUE'],
-  ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER'],
-  FINAL_REVEAL: ['SHOW_RESULTS'],
+  CHARACTER_ASSIGNMENT: ['ENTER_PHONE', 'COMPLETE_SECURITY_TASK'],
+  PHONE_IDLE: ['TRIGGER_ENCOUNTER', 'COMPLETE_SECURITY_TASK'],
+  ENCOUNTER_INTRO: ['BEGIN_INVESTIGATION', 'COMPLETE_SECURITY_TASK'],
+  INVESTIGATION: ['INSPECT_ARTIFACT', 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK'],
+  DECISION: ['INSPECT_ARTIFACT', 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE', 'COMPLETE_SECURITY_TASK'],
+  CONSEQUENCE: ['CONTINUE', 'COMPLETE_SECURITY_TASK'],
+  ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER', 'COMPLETE_SECURITY_TASK'],
   RESULTS: ['PLAY_AGAIN'],
 }
 
@@ -73,7 +72,6 @@ export function initialGameState(): GameState {
     hintsUsed: {},
     decisionHistory: [],
     consequences: [],
-    blackoutClues: [],
     playerScore: 0,
     walletBalance: 0,
     accountSecurity: 100,
@@ -81,6 +79,7 @@ export function initialGameState(): GameState {
     encounterStartedAt: null,
     lastProgressAt: null,
     runFinishedAt: null,
+    completedSecurityTasks: [],
   }
 }
 
@@ -152,8 +151,9 @@ function newRun(seed: number, now: number, previousCharacterId: string | null, f
 
   const encounterQueue = shuffle(character.encounters.map(e => e.id), rng)
   const choiceOrder: Record<string, string[]> = {}
+  const choiceRng = createRng((seed ^ 0x9e3779b9) >>> 0)
   for (const e of character.encounters) {
-    choiceOrder[e.id] = shuffle(e.choices.map(c => c.id), rng)
+    choiceOrder[e.id] = shuffle(e.choices.map(c => c.id), choiceRng)
   }
 
   return {
@@ -197,16 +197,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!encounter) return state
       if (!encounter.artifacts.some(a => a.id === action.artifactId)) return state
       if (state.inspectedArtifacts.includes(action.artifactId)) return state
-
-      const inspectedArtifacts = [...state.inspectedArtifacts, action.artifactId]
-      const clue = encounter.clue
-      const unlocked =
-        !state.blackoutClues.includes(clue.id) && clue.requires.every(id => inspectedArtifacts.includes(id))
       return {
         ...state,
-        inspectedArtifacts,
+        inspectedArtifacts: [...state.inspectedArtifacts, action.artifactId],
         lastProgressAt: action.now,
-        blackoutClues: unlocked ? [...state.blackoutClues, clue.id] : state.blackoutClues,
       }
     }
 
@@ -233,13 +227,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'NEXT_ENCOUNTER': {
       const nextIndex = state.currentEncounterIndex + 1
       if (state.completedEncounters.length >= ENCOUNTERS_PER_RUN || nextIndex >= state.encounterQueue.length) {
-        return { ...state, phase: 'FINAL_REVEAL', encounterStartedAt: null, lastProgressAt: null }
+        return { ...state, phase: 'RESULTS', encounterStartedAt: null, lastProgressAt: null, runFinishedAt: action.now }
       }
       return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: nextIndex, encounterStartedAt: null, lastProgressAt: null }
     }
 
-    case 'SHOW_RESULTS':
-      return { ...state, phase: 'RESULTS', runFinishedAt: action.now }
 
     case 'DEV_JUMP_TO_ENCOUNTER': {
       if (!state.characterId) return state
@@ -249,6 +241,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'DEV_RESET':
       return initialGameState()
+    case 'COMPLETE_SECURITY_TASK':
+      if (state.completedSecurityTasks.includes(action.taskId)) return state
+      return { ...state, completedSecurityTasks: [...state.completedSecurityTasks, action.taskId] }
   }
 }
 

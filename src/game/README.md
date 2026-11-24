@@ -12,15 +12,14 @@ All run state lives here. Screens read it through `useGame()` and change it only
 | `random.ts` | Seeded RNG and Fisher–Yates shuffle, so a seed replays the same run. |
 | `storage.ts` | Saves to `localStorage` after every change. A refresh restores the run; only "Play again" starts a new one. |
 | `useGame.ts` | The React hook screens use. |
-| `useGameEffects.ts` | Connects the engine to the phone: horror stage from progress, glitches on consequences and at the reveal, hint timers, encounter pacing. Called once in `App.tsx`. |
-| `reveal.ts` | Builds the Project Blackout directory for the final screen, in the same layout for every encounter order. |
+| `useGameEffects.ts` | Idle-based hint timer and glitches on wrong answers. Called once in `App.tsx`. |
 | `content/` | One file per character, plus `index.ts` that lists them and checks them with `validateContent()`. |
 
 ## Phases
 
 ```
 MAIN_MENU -> CHARACTER_ASSIGNMENT -> PHONE_IDLE -> ENCOUNTER_INTRO -> INVESTIGATION <-> DECISION
-          -> CONSEQUENCE -> ENCOUNTER_COMPLETE -> (PHONE_IDLE for the next one | FINAL_REVEAL after 8) -> RESULTS
+          -> CONSEQUENCE -> ENCOUNTER_COMPLETE -> (PHONE_IDLE for the next one | RESULTS after 8)
 RESULTS --Play again--> CHARACTER_ASSIGNMENT (new character, new order)
 ```
 
@@ -34,7 +33,6 @@ RESULTS --Play again--> CHARACTER_ASSIGNMENT (new character, new order)
 | `DECISION` | Decision sheet with `game.choices` (already shuffled) | `actions.choose(id)` or `actions.backToInvestigation()` |
 | `CONSEQUENCE` | Outcome, `encounter.feedback`, `game.lastDecision.score` | `actions.continue()` |
 | `ENCOUNTER_COMPLETE` | (short transition) | `actions.nextEncounter()` |
-| `FINAL_REVEAL` | Project Blackout directory, using `state.blackoutClues` | `actions.showResults()` |
 | `RESULTS` | Score, `game.rating`, `game.categoryResults` | `actions.playAgain()` |
 
 Use `game.can('CHOOSE')` and similar to disable buttons that wouldn't do anything.
@@ -45,15 +43,15 @@ Use `game.can('CHOOSE')` and similar to disable buttons that wouldn't do anythin
 - `state.consequences`: soft consequences to show (a pressure message, a glitch, an antagonist line, money gone, a security warning).
 - `state.walletBalance` and `state.accountSecurity`: for Wallet and Settings.
 - `game.hintsShown`: hints that have appeared, newest last. They appear by themselves after 10 s with no new evidence, then every 10 s, and stop once all key evidence is found. Show the newest one; if it has `highlightArtifactId`, make that evidence glow. `game.nextHintAt` says when the next one is due.
-- `game.reveal`: during `FINAL_REVEAL` and `RESULTS`, everything the Project Blackout screen needs: `currentProfile`, `status` lines, the 8 `fragments` (unrecovered ones have `recovered: false` and placeholder text), `finalLines` and `closingLine`.
 
-## Pacing and horror
+## Hints and glitches
 
-`useGameEffects` handles these, so screens don't need timers for them:
+`useGameEffects` (called once in `App.tsx`) handles these:
 
-- The first encounter arrives 15 s after the player enters the phone, then 5 s after each one ends (`PACING` in `useGameEffects.ts`). In dev mode this is off unless you tick **Auto pace** in the ENGINE panel.
-- The horror stage (NORMAL, UNSETTLED, COMPROMISED, BLACKOUT) follows `game.horrorStage` while a run is active, so the old 30-second timer no longer sets it.
-- Wrong answers with a `glitch`, `antagonist` or `account_compromise` consequence glitch the screen, and so does entering the final reveal. Restoring a save after a refresh doesn't replay them.
+- Hints appear by themselves after 10 s with no new evidence, then every 10 s, and stop once all key evidence is found.
+- Wrong answers with a `glitch`, `antagonist` or `account_compromise` consequence glitch the screen. Restoring a save after a refresh doesn't replay them.
+
+Horror stage and encounter pacing are handled directly in `App.tsx`.
 
 ## Adding a character
 

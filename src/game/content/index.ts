@@ -5,8 +5,9 @@
 import type { Character, Encounter } from '../types.ts'
 import { ARCHETYPES, CATEGORY_OF } from '../types.ts'
 import { mika } from './mika.ts'
+import { rafa } from './rafa.ts'
 
-export const CHARACTERS: readonly Character[] = [mika]
+export const CHARACTERS: readonly Character[] = [mika, rafa]
 
 export function getCharacter(id: string | null): Character | undefined {
   return CHARACTERS.find(c => c.id === id)
@@ -42,7 +43,7 @@ export function validateContent(characters: readonly Character[] = CHARACTERS): 
       note(e.id, where)
       if (e.characterId !== c.id) problems.push(`${where}: characterId is ${e.characterId}`)
       if (CATEGORY_OF[e.archetype] !== e.category) problems.push(`${where}: ${e.archetype} must be ${CATEGORY_OF[e.archetype]}`)
-      if (e.choices.length < 2) problems.push(`${where}: needs at least 2 choices`)
+      if (e.choices.length < 2 || e.choices.length > 3) problems.push(`${where}: needs 2-3 choices, has ${e.choices.length}`)
       const correct = e.choices.filter(ch => ch.isCorrect).length
       if (correct !== 1) problems.push(`${where}: needs exactly 1 correct choice, has ${correct}`)
       for (const ch of e.choices) {

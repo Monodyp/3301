@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { ArrowLeft, Phone, MessageCircle } from 'lucide-react'
+import type { CharacterPhoneData } from '../../data/characterData'
+import type { Encounter } from '../../game/types'
 
 const contacts = [
   { name: 'Mara Vale', role: 'Digital archivist', color: '#b69bd6' },
@@ -8,10 +10,11 @@ const contacts = [
   { name: 'Noah Reed', role: 'Friend', color: '#8397b5' },
 ]
 
-export function ContactsApp() {
+export function ContactsApp({ data, encounter: _encounter }: { data?: CharacterPhoneData; encounter?: Encounter }) {
   const [selected, setSelected] = useState<number | null>(null)
+  const contactsData = data?.contacts ?? contacts
   if (selected !== null) {
-    const contact = contacts[selected]
+    const contact = contactsData[selected]
     return (
       <div className="app-content contact-detail">
         <button className="detail-back" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Contacts</button>
@@ -26,7 +29,7 @@ export function ContactsApp() {
       <div className="app-title-row"><h2>Contacts</h2><button>＋</button></div>
       <div className="search-field">Search contacts</div>
       <div className="contact-list">
-        {contacts.map((contact, index) => (
+        {contactsData.map((contact, index) => (
           <button key={contact.name} onClick={() => setSelected(index)}>
             <div className="avatar" style={{ background: contact.color }}>{contact.name[0]}</div>
             <div><strong>{contact.name}</strong><span>{contact.role}</span></div>

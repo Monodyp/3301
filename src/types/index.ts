@@ -7,6 +7,11 @@ export type AppId =
   | 'calls'
   | 'wallet'
   | 'settings'
+  | 'livestream'
+  | 'marketplace'
+  | 'wifi'
+  | 'jobs'
+  | 'ctf'
 
 export type HorrorStage = 'NORMAL' | 'UNSETTLED' | 'COMPROMISED' | 'BLACKOUT'
 

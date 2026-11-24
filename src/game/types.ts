@@ -122,6 +122,28 @@ export interface Encounter {
   feedback: Feedback
   clue: BlackoutClue
   hints: Hint[]
+  advertisement?: EncounterAdvertisement
+  incomingCall?: EncounterIncomingCall
+}
+
+export interface EncounterAdvertisement {
+  id: string
+  title: string
+  description: string
+  destination: string
+  suspicious: boolean
+  artifactId?: string
+  encounterId: string
+}
+
+export interface EncounterIncomingCall {
+  caller: string
+  context: string
+  content: string
+  voicemail: string
+  callerColor?: string
+  artifactId?: string
+  encounterId: string
 }
 
 // ---------------------------------------------------------------- state
@@ -135,7 +157,6 @@ export type GamePhase =
   | 'DECISION'
   | 'CONSEQUENCE' // outcome and feedback card
   | 'ENCOUNTER_COMPLETE'
-  | 'FINAL_REVEAL'
   | 'RESULTS'
 
 export interface ScoreBreakdown {
@@ -180,7 +201,6 @@ export interface GameState {
   hintsUsed: Record<string, number> // encounter id -> hints shown
   decisionHistory: DecisionRecord[]
   consequences: AppliedConsequence[]
-  blackoutClues: string[] // unlocked clue ids
   playerScore: number
   walletBalance: number
   accountSecurity: number // 0–100
@@ -188,6 +208,7 @@ export interface GameState {
   encounterStartedAt: number | null // when investigation began
   lastProgressAt: number | null // last new evidence or hint; hints wait for the player to stall after this
   runFinishedAt: number | null
+  completedSecurityTasks: string[]
 }
 
 export type SurvivalRating =

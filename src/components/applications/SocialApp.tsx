@@ -1,17 +1,28 @@
 import { Heart, MessageCircle, Share2 } from 'lucide-react'
-import { socialPosts } from '../../data/mockData'
+import type { CharacterPhoneData } from '../../data/characterData'
+import type { Encounter } from '../../game/types'
 
-export function SocialApp() {
+export function SocialApp({ data, encounter }: { data?: CharacterPhoneData; encounter?: Encounter }) {
+  const posts = data?.socialPosts ?? []
   return (
     <div className="app-content">
       <div className="app-title-row"><h2>Social</h2><button>•••</button></div>
       <div className="stories">
-        {['Mara', 'Theo', 'Lena', 'Nora'].map((name, index) => (
-          <div key={name}><span style={{ background: ['#b69bdf','#78a8a0','#ca8f92','#8397b5'][index] }}>{name[0]}</span><small>{name}</small></div>
+        {(data?.stories ?? []).map(story => (
+          <div key={story.name}><span style={{ background: story.color }}>{story.name[0]}</span><small>{story.name}</small></div>
         ))}
       </div>
       <div className="social-feed">
-        {socialPosts.map(post => (
+        {encounter?.trigger.app === 'social' && (
+          <article className="social-post encounter-post">
+            <div className="post-avatar" style={{ background: '#8c5c68' }}>!</div>
+            <div className="post-body">
+              <div className="post-head"><strong>{encounter.trigger.sender}</strong><span>Encounter · now</span></div>
+              <p>{encounter.trigger.message}</p>
+            </div>
+          </article>
+        )}
+        {posts.map(post => (
           <article className="social-post" key={post.id}>
             <div className="post-avatar" style={{ background: post.color }}>{post.user[0]}</div>
             <div className="post-body">

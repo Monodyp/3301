@@ -20,10 +20,10 @@ import {
   orderedChoices,
   type GameAction,
 } from './engine.ts'
-import { buildBlackoutReveal } from './reveal.ts'
 import { clearSave, loadGame, saveGame } from './storage.ts'
 import { randomSeed } from './random.ts'
 import { horrorStageFor, resultsByCategory, survivalRating } from './scoring.ts'
+import { formatCompletionTime } from './educational.ts'
 
 export function useGame() {
   const [state, dispatch] = useReducer(gameReducer, undefined, () => loadGame())
@@ -48,11 +48,11 @@ export function useGame() {
       backToInvestigation: () => send({ type: 'BACK_TO_INVESTIGATION' }),
       choose: (choiceId: string) => send({ type: 'CHOOSE', choiceId, now: Date.now() }),
       continue: () => send({ type: 'CONTINUE' }),
-      nextEncounter: () => send({ type: 'NEXT_ENCOUNTER' }),
-      showResults: () => send({ type: 'SHOW_RESULTS', now: Date.now() }),
+      nextEncounter: () => send({ type: 'NEXT_ENCOUNTER', now: Date.now() }),
       playAgain: (seed?: number) => send({ type: 'PLAY_AGAIN', seed: seed ?? randomSeed(), now: Date.now() }),
       devJumpTo: (index: number) => send({ type: 'DEV_JUMP_TO_ENCOUNTER', index }),
       devReset: () => send({ type: 'DEV_RESET' }),
+      completeSecurityTask: (taskId: string) => send({ type: 'COMPLETE_SECURITY_TASK', taskId }),
     }),
     [send],
   )
@@ -80,8 +80,8 @@ export function deriveGameView(state: GameState) {
     horrorStage: horrorStageFor(state.completedEncounters.length, mistakes),
     categoryResults: resultsByCategory(state.decisionHistory),
     progress: { done: state.completedEncounters.length, total: state.encounterQueue.length },
+    completionTime: formatCompletionTime(state.runStartedAt, state.runFinishedAt),
     nextHintAt: nextHintDueAt(state),
-    reveal: state.phase === 'FINAL_REVEAL' || state.phase === 'RESULTS' ? buildBlackoutReveal(state) : null,
   }
 }
 

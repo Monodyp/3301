@@ -15,11 +15,10 @@ const STEPS: { type: GameAction['type']; label: string }[] = [
   { type: 'BACK_TO_INVESTIGATION', label: 'Back' },
   { type: 'CONTINUE', label: 'Continue' },
   { type: 'NEXT_ENCOUNTER', label: 'Next' },
-  { type: 'SHOW_RESULTS', label: 'Results' },
 ]
 
-export function EnginePanel({ game, autoPace, setAutoPace }: { game: Game; autoPace: boolean; setAutoPace: (on: boolean) => void }) {
-  const { state, actions, can, character, encounter, choices, lastDecision, hintsShown, nextHintAt, reveal } = game
+export function EnginePanel({ game }: { game: Game }) {
+  const { state, actions, can, character, encounter, choices, lastDecision, hintsShown, nextHintAt } = game
   const [seedText, setSeedText] = useState('')
   const [characterId, setCharacterId] = useState('')
   const seed = seedText.trim() === '' ? undefined : Number(seedText) >>> 0
@@ -33,7 +32,6 @@ export function EnginePanel({ game, autoPace, setAutoPace }: { game: Game; autoP
       case 'BACK_TO_INVESTIGATION': return actions.backToInvestigation()
       case 'CONTINUE': return actions.continue()
       case 'NEXT_ENCOUNTER': return actions.nextEncounter()
-      case 'SHOW_RESULTS': return actions.showResults()
     }
   }
 
@@ -58,10 +56,6 @@ export function EnginePanel({ game, autoPace, setAutoPace }: { game: Game; autoP
         <button disabled={!can('PLAY_AGAIN')} onClick={() => actions.playAgain(seed)}>Play again</button>
         <button className="engine-danger" onClick={actions.devReset}>Reset</button>
       </div>
-      <label className="engine-check">
-        <input type="checkbox" checked={autoPace} onChange={e => setAutoPace(e.target.checked)} />
-        Auto pace (encounters arrive by themselves)
-      </label>
 
       {character && (
         <dl className="engine-stats">
@@ -72,7 +66,6 @@ export function EnginePanel({ game, autoPace, setAutoPace }: { game: Game; autoP
           <dt>Horror</dt><dd>{game.horrorStage}</dd>
           <dt>Security</dt><dd>{state.accountSecurity}/100</dd>
           <dt>Wallet</dt><dd>₱{state.walletBalance.toLocaleString()}</dd>
-          <dt>BC-07 clues</dt><dd>{state.blackoutClues.length}</dd>
         </dl>
       )}
 
@@ -122,18 +115,6 @@ export function EnginePanel({ game, autoPace, setAutoPace }: { game: Game; autoP
           </p>
           {encounter && <p className="engine-note">{encounter.choices.find(c => c.id === lastDecision.choiceId)?.outcome}</p>}
           {encounter && <p className="engine-note">{encounter.feedback.principle}</p>}
-        </section>
-      )}
-
-      {reveal && (
-        <section>
-          <h4>{reveal.operation} · {reveal.campaignId} · {reveal.currentProfile}</h4>
-          <p className="engine-note">{reveal.recoveredCount}/{reveal.fragments.length} fragments recovered</p>
-          {reveal.fragments.map(f => (
-            <p key={f.clueId} className={f.recovered ? 'engine-note' : 'engine-note engine-muted'}>
-              {f.archetype} {f.group}: {f.text}
-            </p>
-          ))}
         </section>
       )}
 
