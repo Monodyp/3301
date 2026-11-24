@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react'
 import { Coffee, TrainFront, ShoppingBag } from 'lucide-react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { AppliedConsequence } from '../../game/types'
 
-export function WalletApp({ data, balance, consequences = [] }: { data?: CharacterPhoneData; balance?: number; consequences?: AppliedConsequence[] }) {
+export function WalletApp({ data, balance, consequences = [], clues }: { data?: CharacterPhoneData; balance?: number; consequences?: AppliedConsequence[]; clues?: (surface: 'incident' | 'app') => ReactNode }) {
   const consequenceTransactions = consequences.filter(item => item.kind === 'balance_loss').map(item => ({
     name: 'Unverified payment',
     detail: item.encounterId,
@@ -12,6 +13,7 @@ export function WalletApp({ data, balance, consequences = [] }: { data?: Charact
   return (
     <div className="app-content wallet-app">
       <div className="app-title-row"><h2>Wallet</h2><button>＋</button></div>
+      {clues?.('app')}
       <div className="bank-card">
         <div><span>Fictional Credit</span><strong>•• 4182</strong></div>
         <span>Available</span><b>₱{(balance ?? data?.walletBalance ?? 1284.5).toLocaleString()}</b>

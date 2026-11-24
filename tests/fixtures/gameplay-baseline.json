@@ -1,0 +1,1405 @@
+{
+ "queues": {
+  "mika:7": [
+   "MK-R3",
+   "MK-O2",
+   "MK-R1",
+   "MK-A2",
+   "MK-A3",
+   "MK-R2",
+   "MK-O1",
+   "MK-A1"
+  ],
+  "mika:1234": [
+   "MK-A3",
+   "MK-A2",
+   "MK-R1",
+   "MK-R2",
+   "MK-A1",
+   "MK-O2",
+   "MK-O1",
+   "MK-R3"
+  ],
+  "mika:4242": [
+   "MK-R2",
+   "MK-O2",
+   "MK-A1",
+   "MK-A2",
+   "MK-R3",
+   "MK-R1",
+   "MK-O1",
+   "MK-A3"
+  ],
+  "rafa:7": [
+   "RF-R3",
+   "RF-O2",
+   "RF-R1",
+   "RF-A2",
+   "RF-A3",
+   "RF-R2",
+   "RF-O1",
+   "RF-A1"
+  ],
+  "rafa:1234": [
+   "RF-A3",
+   "RF-A2",
+   "RF-R1",
+   "RF-R2",
+   "RF-A1",
+   "RF-O2",
+   "RF-O1",
+   "RF-R3"
+  ],
+  "rafa:4242": [
+   "RF-R2",
+   "RF-O2",
+   "RF-A1",
+   "RF-A2",
+   "RF-R3",
+   "RF-R1",
+   "RF-O1",
+   "RF-A3"
+  ]
+ },
+ "requirements": {
+  "MK-A1": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-A1-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-A1-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "messages",
+         "target": "incident:MK-A1"
+        }
+       ],
+       "presents": [
+        "MK-A1:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-A1:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-A1-S2"
+     }
+    },
+    {
+     "id": "MK-A1-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-A1-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-A1-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "messages",
+         "target": "incident:MK-A1"
+        }
+       ],
+       "presents": [
+        "MK-A1:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-A1:thread"
+     ],
+     "evidence": [
+      "MK-A1-ART-01",
+      "MK-A1-ART-02",
+      "MK-A1-ART-03"
+     ],
+     "decisionId": "MK-A1-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-A1-D1",
+    "characterId": "mika",
+    "encounterId": "MK-A1",
+    "scenarioId": "MK-A1-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-A1-c1",
+     "MK-A1-c2",
+     "MK-A1-c3"
+    ]
+   }
+  },
+  "MK-A2": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-A2-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-A2-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "social",
+         "target": "incident:MK-A2"
+        }
+       ],
+       "presents": [
+        "MK-A2:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-A2:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-A2-S2"
+     }
+    },
+    {
+     "id": "MK-A2-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-A2-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-A2-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "social",
+         "target": "incident:MK-A2"
+        }
+       ],
+       "presents": [
+        "MK-A2:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-A2:thread"
+     ],
+     "evidence": [
+      "MK-A2-ART-01",
+      "MK-A2-ART-02",
+      "MK-A2-ART-03"
+     ],
+     "decisionId": "MK-A2-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-A2-D1",
+    "characterId": "mika",
+    "encounterId": "MK-A2",
+    "scenarioId": "MK-A2-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-A2-c1",
+     "MK-A2-c2",
+     "MK-A2-c3"
+    ]
+   }
+  },
+  "MK-A3": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-A3-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-A3-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "messages",
+         "target": "incident:MK-A3"
+        }
+       ],
+       "presents": [
+        "MK-A3:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-A3:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-A3-S2"
+     }
+    },
+    {
+     "id": "MK-A3-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-A3-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-A3-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "messages",
+         "target": "incident:MK-A3"
+        }
+       ],
+       "presents": [
+        "MK-A3:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-A3:thread"
+     ],
+     "evidence": [
+      "MK-A3-ART-01",
+      "MK-A3-ART-02",
+      "MK-A3-ART-03"
+     ],
+     "decisionId": "MK-A3-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-A3-D1",
+    "characterId": "mika",
+    "encounterId": "MK-A3",
+    "scenarioId": "MK-A3-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-A3-c1",
+     "MK-A3-c2",
+     "MK-A3-c3"
+    ]
+   }
+  },
+  "MK-R1": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-R1-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-R1-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "email",
+         "target": "incident:MK-R1"
+        }
+       ],
+       "presents": [
+        "MK-R1:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-R1:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-R1-S2"
+     }
+    },
+    {
+     "id": "MK-R1-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-R1-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-R1-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "email",
+         "target": "incident:MK-R1"
+        }
+       ],
+       "presents": [
+        "MK-R1:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-R1:thread"
+     ],
+     "evidence": [
+      "MK-R1-ART-01",
+      "MK-R1-ART-02",
+      "MK-R1-ART-03"
+     ],
+     "decisionId": "MK-R1-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-R1-D1",
+    "characterId": "mika",
+    "encounterId": "MK-R1",
+    "scenarioId": "MK-R1-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-R1-c1",
+     "MK-R1-c2",
+     "MK-R1-c3"
+    ]
+   }
+  },
+  "MK-R2": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-R2-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-R2-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "messages",
+         "target": "incident:MK-R2"
+        }
+       ],
+       "presents": [
+        "MK-R2:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-R2:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-R2-S2"
+     }
+    },
+    {
+     "id": "MK-R2-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-R2-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-R2-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "messages",
+         "target": "incident:MK-R2"
+        }
+       ],
+       "presents": [
+        "MK-R2:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-R2:thread"
+     ],
+     "evidence": [
+      "MK-R2-ART-01",
+      "MK-R2-ART-02",
+      "MK-R2-ART-03"
+     ],
+     "decisionId": "MK-R2-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-R2-D1",
+    "characterId": "mika",
+    "encounterId": "MK-R2",
+    "scenarioId": "MK-R2-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-R2-c1",
+     "MK-R2-c2",
+     "MK-R2-c3"
+    ]
+   }
+  },
+  "MK-R3": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-R3-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-R3-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "calls",
+         "target": "incident:MK-R3"
+        }
+       ],
+       "presents": [
+        "MK-R3:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-R3:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-R3-S2"
+     }
+    },
+    {
+     "id": "MK-R3-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-R3-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-R3-S2-call",
+       "anyOf": [
+        {
+         "kind": "CALL_COMPLETED",
+         "app": "calls",
+         "target": "incident:MK-R3"
+        },
+        {
+         "kind": "MESSAGE_READ",
+         "app": "calls",
+         "target": "voicemail:MK-R3"
+        }
+       ],
+       "presents": [
+        "MK-R3:call-audio"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-R3:call-audio"
+     ],
+     "evidence": [
+      "MK-R3-ART-01",
+      "MK-R3-ART-02",
+      "MK-R3-ART-03"
+     ],
+     "decisionId": "MK-R3-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-R3-D1",
+    "characterId": "mika",
+    "encounterId": "MK-R3",
+    "scenarioId": "MK-R3-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-R3-c1",
+     "MK-R3-c2",
+     "MK-R3-c3"
+    ]
+   }
+  },
+  "MK-O1": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-O1-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-O1-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "email",
+         "target": "incident:MK-O1"
+        }
+       ],
+       "presents": [
+        "MK-O1:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-O1:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-O1-S2"
+     }
+    },
+    {
+     "id": "MK-O1-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-O1-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-O1-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "email",
+         "target": "incident:MK-O1"
+        }
+       ],
+       "presents": [
+        "MK-O1:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-O1:thread"
+     ],
+     "evidence": [
+      "MK-O1-ART-01",
+      "MK-O1-ART-02",
+      "MK-O1-ART-03"
+     ],
+     "decisionId": "MK-O1-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-O1-D1",
+    "characterId": "mika",
+    "encounterId": "MK-O1",
+    "scenarioId": "MK-O1-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-O1-c1",
+     "MK-O1-c2",
+     "MK-O1-c3"
+    ]
+   }
+  },
+  "MK-O2": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "MK-O2-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "MK-O2-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "messages",
+         "target": "incident:MK-O2"
+        }
+       ],
+       "presents": [
+        "MK-O2:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-O2:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "MK-O2-S2"
+     }
+    },
+    {
+     "id": "MK-O2-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "MK-O2-S1"
+     },
+     "actions": [
+      {
+       "id": "MK-O2-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "messages",
+         "target": "incident:MK-O2"
+        }
+       ],
+       "presents": [
+        "MK-O2:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "MK-O2:thread"
+     ],
+     "evidence": [
+      "MK-O2-ART-01",
+      "MK-O2-ART-02",
+      "MK-O2-ART-03"
+     ],
+     "decisionId": "MK-O2-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "MK-O2-D1",
+    "characterId": "mika",
+    "encounterId": "MK-O2",
+    "scenarioId": "MK-O2-S2",
+    "prompt": "What should Mika do?",
+    "choiceIds": [
+     "MK-O2-c1",
+     "MK-O2-c2",
+     "MK-O2-c3"
+    ]
+   }
+  },
+  "RF-A1": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-A1-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-A1-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "messages",
+         "target": "incident:RF-A1"
+        }
+       ],
+       "presents": [
+        "RF-A1:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-A1:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-A1-S2"
+     }
+    },
+    {
+     "id": "RF-A1-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-A1-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-A1-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "messages",
+         "target": "incident:RF-A1"
+        }
+       ],
+       "presents": [
+        "RF-A1:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-A1:thread"
+     ],
+     "evidence": [
+      "RF-A1-ART-01",
+      "RF-A1-ART-02",
+      "RF-A1-ART-03"
+     ],
+     "decisionId": "RF-A1-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-A1-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-A1",
+    "scenarioId": "RF-A1-S2",
+    "prompt": "How should Rafa respond?",
+    "choiceIds": [
+     "RF-A1-c1",
+     "RF-A1-c2",
+     "RF-A1-c3"
+    ]
+   }
+  },
+  "RF-A2": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-A2-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-A2-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "social",
+         "target": "incident:RF-A2"
+        }
+       ],
+       "presents": [
+        "RF-A2:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-A2:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-A2-S2"
+     }
+    },
+    {
+     "id": "RF-A2-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-A2-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-A2-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "social",
+         "target": "incident:RF-A2"
+        }
+       ],
+       "presents": [
+        "RF-A2:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-A2:thread"
+     ],
+     "evidence": [
+      "RF-A2-ART-01",
+      "RF-A2-ART-02",
+      "RF-A2-ART-03"
+     ],
+     "decisionId": "RF-A2-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-A2-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-A2",
+    "scenarioId": "RF-A2-S2",
+    "prompt": "What should Rafa do?",
+    "choiceIds": [
+     "RF-A2-c1",
+     "RF-A2-c2",
+     "RF-A2-c3"
+    ]
+   }
+  },
+  "RF-A3": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-A3-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-A3-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "email",
+         "target": "incident:RF-A3"
+        }
+       ],
+       "presents": [
+        "RF-A3:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-A3:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-A3-S2"
+     }
+    },
+    {
+     "id": "RF-A3-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-A3-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-A3-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "email",
+         "target": "incident:RF-A3"
+        }
+       ],
+       "presents": [
+        "RF-A3:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-A3:thread"
+     ],
+     "evidence": [
+      "RF-A3-ART-01",
+      "RF-A3-ART-02",
+      "RF-A3-ART-03"
+     ],
+     "decisionId": "RF-A3-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-A3-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-A3",
+    "scenarioId": "RF-A3-S2",
+    "prompt": "How should Rafa handle the offer?",
+    "choiceIds": [
+     "RF-A3-c1",
+     "RF-A3-c2",
+     "RF-A3-c3"
+    ]
+   }
+  },
+  "RF-R1": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-R1-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-R1-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "email",
+         "target": "incident:RF-R1"
+        }
+       ],
+       "presents": [
+        "RF-R1:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-R1:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-R1-S2"
+     }
+    },
+    {
+     "id": "RF-R1-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-R1-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-R1-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "email",
+         "target": "incident:RF-R1"
+        }
+       ],
+       "presents": [
+        "RF-R1:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-R1:thread"
+     ],
+     "evidence": [
+      "RF-R1-ART-01",
+      "RF-R1-ART-02",
+      "RF-R1-ART-03"
+     ],
+     "decisionId": "RF-R1-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-R1-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-R1",
+    "scenarioId": "RF-R1-S2",
+    "prompt": "What should Rafa do?",
+    "choiceIds": [
+     "RF-R1-c1",
+     "RF-R1-c2",
+     "RF-R1-c3"
+    ]
+   }
+  },
+  "RF-R2": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-R2-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-R2-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "messages",
+         "target": "incident:RF-R2"
+        }
+       ],
+       "presents": [
+        "RF-R2:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-R2:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-R2-S2"
+     }
+    },
+    {
+     "id": "RF-R2-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-R2-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-R2-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "messages",
+         "target": "incident:RF-R2"
+        }
+       ],
+       "presents": [
+        "RF-R2:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-R2:thread"
+     ],
+     "evidence": [
+      "RF-R2-ART-01",
+      "RF-R2-ART-02",
+      "RF-R2-ART-03"
+     ],
+     "decisionId": "RF-R2-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-R2-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-R2",
+    "scenarioId": "RF-R2-S2",
+    "prompt": "What should Rafa do?",
+    "choiceIds": [
+     "RF-R2-c1",
+     "RF-R2-c2",
+     "RF-R2-c3"
+    ]
+   }
+  },
+  "RF-R3": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-R3-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-R3-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "calls",
+         "target": "incident:RF-R3"
+        }
+       ],
+       "presents": [
+        "RF-R3:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-R3:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-R3-S2"
+     }
+    },
+    {
+     "id": "RF-R3-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-R3-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-R3-S2-call",
+       "anyOf": [
+        {
+         "kind": "CALL_COMPLETED",
+         "app": "calls",
+         "target": "incident:RF-R3"
+        },
+        {
+         "kind": "MESSAGE_READ",
+         "app": "calls",
+         "target": "voicemail:RF-R3"
+        }
+       ],
+       "presents": [
+        "RF-R3:call-audio"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-R3:call-audio"
+     ],
+     "evidence": [
+      "RF-R3-ART-01",
+      "RF-R3-ART-02",
+      "RF-R3-ART-03"
+     ],
+     "decisionId": "RF-R3-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-R3-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-R3",
+    "scenarioId": "RF-R3-S2",
+    "prompt": "How should Rafa respond?",
+    "choiceIds": [
+     "RF-R3-c1",
+     "RF-R3-c2",
+     "RF-R3-c3"
+    ]
+   }
+  },
+  "RF-O1": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-O1-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-O1-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "email",
+         "target": "incident:RF-O1"
+        }
+       ],
+       "presents": [
+        "RF-O1:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-O1:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-O1-S2"
+     }
+    },
+    {
+     "id": "RF-O1-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-O1-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-O1-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "email",
+         "target": "incident:RF-O1"
+        }
+       ],
+       "presents": [
+        "RF-O1:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-O1:thread"
+     ],
+     "evidence": [
+      "RF-O1-ART-01",
+      "RF-O1-ART-02",
+      "RF-O1-ART-03"
+     ],
+     "decisionId": "RF-O1-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-O1-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-O1",
+    "scenarioId": "RF-O1-S2",
+    "prompt": "How should Rafa proceed?",
+    "choiceIds": [
+     "RF-O1-c1",
+     "RF-O1-c2",
+     "RF-O1-c3"
+    ]
+   }
+  },
+  "RF-O2": {
+   "requires": [],
+   "scenarios": [
+    {
+     "id": "RF-O2-S1",
+     "startsWhen": {
+      "kind": "incident-delivered"
+     },
+     "actions": [
+      {
+       "id": "RF-O2-S1-open",
+       "anyOf": [
+        {
+         "kind": "CONVERSATION_OPENED",
+         "app": "email",
+         "target": "incident:RF-O2"
+        }
+       ],
+       "presents": [
+        "RF-O2:incident-notice"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-O2:incident-notice"
+     ],
+     "evidence": [],
+     "decisionId": null,
+     "completesWhen": "actions-complete",
+     "next": {
+      "kind": "scenario",
+      "scenarioId": "RF-O2-S2"
+     }
+    },
+    {
+     "id": "RF-O2-S2",
+     "startsWhen": {
+      "kind": "scenario-completed",
+      "scenarioId": "RF-O2-S1"
+     },
+     "actions": [
+      {
+       "id": "RF-O2-S2-read",
+       "anyOf": [
+        {
+         "kind": "MESSAGE_READ",
+         "app": "email",
+         "target": "incident:RF-O2"
+        }
+       ],
+       "presents": [
+        "RF-O2:thread"
+       ]
+      }
+     ],
+     "narrative": [
+      "RF-O2:thread"
+     ],
+     "evidence": [
+      "RF-O2-ART-01",
+      "RF-O2-ART-02",
+      "RF-O2-ART-03"
+     ],
+     "decisionId": "RF-O2-D1",
+     "completesWhen": "decision-submitted",
+     "next": {
+      "kind": "next-encounter"
+     }
+    }
+   ],
+   "decision": {
+    "id": "RF-O2-D1",
+    "characterId": "rafa",
+    "encounterId": "RF-O2",
+    "scenarioId": "RF-O2-S2",
+    "prompt": "What should Rafa do with the installer?",
+    "choiceIds": [
+     "RF-O2-c1",
+     "RF-O2-c2",
+     "RF-O2-c3"
+    ]
+   }
+  }
+ },
+ "contentSha256": "45a97df56ef19387af658329a45d9271fb640027cb6173eb92820f568a488426"
+}

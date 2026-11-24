@@ -22,4 +22,9 @@ export interface GameNotification {
   source: AppId
   timestamp: string
   unreadIncrement?: boolean
+  decisionId?: string // tapping opens this pending decision instead of the app
+  variant?: 'attack' // a cyberattack notification, styled by tier
+  tier?: 1 | 2 | 3 | 4 // 1 anomaly, 2 intrusion, 3 compromise, 4 later escalation
+  tierLabel?: string
+  detail?: string
 }

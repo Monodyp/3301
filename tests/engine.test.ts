@@ -5,6 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { CHARACTERS, validateContent } from '../src/game/content/index.ts'
+import { validateNarrative } from '../src/game/content/scenarios.ts'
 import {
   ENCOUNTERS_PER_RUN,
   canDispatch,
@@ -20,6 +21,7 @@ import { clueBonus, horrorStageFor, scoreDecision, survivalRating, timeBonus } f
 import { loadGame, saveGame } from '../src/game/storage.ts'
 import { ARCHETYPES, type GameState } from '../src/game/types.ts'
 import { EDUCATIONAL_DEBRIEF, feedbackForDecision, formatCompletionTime } from '../src/game/educational.ts'
+import { findEvidence, investigateFully, openIncident, openPending, takeInNarrative } from './support/play.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -31,12 +33,11 @@ function started(seed = 42): GameState {
   return run(initialGameState(), { type: 'START_RUN', seed, now: T0 }, { type: 'ENTER_PHONE' })
 }
 
-// Plays the current encounter: inspect everything, decide after `seconds`.
+// Plays the current encounter: open the incident, read it, inspect everything, decide after `seconds`.
 function playEncounter(state: GameState, pickCorrect: boolean, seconds = 10): GameState {
   const startAt = T0 + state.currentEncounterIndex * 60_000
-  let s = run(state, { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: startAt })
-  for (const a of currentEncounter(s)!.artifacts) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id, now: T0 })
-  s = gameReducer(s, { type: 'OPEN_DECISION' })
+  let s = takeInNarrative(openIncident(gameReducer(state, { type: 'TRIGGER_ENCOUNTER' }), startAt))
+  s = openPending(findEvidence(s, T0, false))
   const choice = orderedChoices(s).find(c => c.isCorrect === pickCorrect)!
   return run(s, { type: 'CHOOSE', choiceId: choice.id, now: startAt + seconds * 1000 }, { type: 'CONTINUE' })
 }
@@ -50,12 +51,22 @@ function playWholeRun(state: GameState, correctPattern: boolean[]): GameState {
   return s
 }
 
+function decisionReady(state: GameState): GameState {
+  return openPending(investigateFully(state))
+}
+
+// Trigger the incident and open it: the investigation starts at `now`.
+function investigating(state: GameState, now = T0): GameState {
+  return openIncident(gameReducer(state, { type: 'TRIGGER_ENCOUNTER' }), now)
+}
+
 test('content: every character passes the integrity checks', () => {
   assert.deepEqual(validateContent(), [])
+  assert.deepEqual(validateNarrative(), [])
 })
 
-test('Mika and Rafa each have complete, sequential encounter runs', () => {
-  for (const characterId of ['mika', 'rafa']) {
+test('every authored character has a complete, sequential encounter run', () => {
+  for (const { id: characterId } of CHARACTERS) {
     const s = run(initialGameState(), { type: 'START_RUN', seed: 77, now: T0, characterId }, { type: 'ENTER_PHONE' })
     const character = CHARACTERS.find(c => c.id === characterId)!
     assert.equal(s.characterId, characterId)
@@ -81,7 +92,7 @@ test('all authored encounters have 2-3 contextual choices', () => {
 })
 
 test('feedback matches the submitted choice and encounter category', () => {
-  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+  let s = decisionReady(started())
   const encounter = currentEncounter(s)!
   const correct = orderedChoices(s).find(choice => choice.isCorrect)!
   s = gameReducer(s, { type: 'CHOOSE', choiceId: correct.id, now: T0 + 5000 })
@@ -95,7 +106,7 @@ test('feedback matches the submitted choice and encounter category', () => {
 })
 
 test('incorrect feedback explains the risky selected response and a safer alternative', () => {
-  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+  let s = decisionReady(started())
   const encounter = currentEncounter(s)!
   const incorrect = orderedChoices(s).find(choice => !choice.isCorrect)!
   s = gameReducer(s, { type: 'CHOOSE', choiceId: incorrect.id, now: T0 + 5000 })
@@ -189,14 +200,15 @@ test('illegal transitions are ignored', () => {
   assert.equal(gameReducer(menu, { type: 'CHOOSE', choiceId: 'MK-A1-c2', now: T0 }), menu)
 
   const idle = started()
-  assert.equal(gameReducer(idle, { type: 'OPEN_DECISION' }), idle, 'cannot decide before investigating')
+  assert.equal(gameReducer(idle, { type: 'OPEN_DECISION', decisionId: `${currentEncounter(idle)!.id}-D1` }), idle, 'cannot decide before investigating')
+  assert.equal(gameReducer(idle, { type: 'INSPECT_ARTIFACT', artifactId: currentEncounter(idle)!.artifacts[0].id, now: T0 }), idle)
   assert.equal(gameReducer(idle, { type: 'NEXT_ENCOUNTER', now: T0 }), idle)
   assert.equal(canDispatch(idle, 'TRIGGER_ENCOUNTER'), true)
   assert.equal(canDispatch(idle, 'CHOOSE'), false)
 })
 
 test('an encounter cannot be completed twice', () => {
-  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+  let s = decisionReady(started())
   const [first, second] = orderedChoices(s)
   s = gameReducer(s, { type: 'CHOOSE', choiceId: first.id, now: T0 + 5000 })
   const again = gameReducer(s, { type: 'CHOOSE', choiceId: second.id, now: T0 + 6000 })
@@ -254,18 +266,17 @@ test('survival ratings match GDD 9.3', () => {
 })
 
 test('artifacts from another encounter cannot be inspected', () => {
-  const s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  const s = investigating(started())
   const other = CHARACTERS[0].encounters.find(e => e.id !== currentEncounter(s)!.id)!
   assert.equal(gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: other.artifacts[0].id, now: T0 }), s)
 })
 
 test('hints are capped and reduce the clue bonus', () => {
-  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  let s = investigating(started())
   const encounter = currentEncounter(s)!
   for (let i = 0; i < 10; i++) s = gameReducer(s, { type: 'USE_HINT', now: T0 })
   assert.equal(s.hintsUsed[encounter.id], encounter.hints.length)
-  for (const a of encounter.artifacts) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id, now: T0 })
-  s = gameReducer(s, { type: 'OPEN_DECISION' })
+  s = openPending(takeInNarrative(findEvidence(s, T0, false)))
   const correct = orderedChoices(s).find(c => c.isCorrect)!
   s = gameReducer(s, { type: 'CHOOSE', choiceId: correct.id, now: T0 + 10_000 })
   assert.equal(s.decisionHistory[0].score.clueBonus, 10 - 3 * encounter.hints.length)
@@ -279,7 +290,7 @@ test('save and restore: a refresh gives back the exact same state', () => {
   }
   let s = started(11)
   s = playEncounter(s, true)
-  s = run(s, { type: 'NEXT_ENCOUNTER', now: T0 + 20000 }, { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  s = investigating(gameReducer(s, { type: 'NEXT_ENCOUNTER', now: T0 + 20000 }))
   saveGame(s, storage)
   assert.deepEqual(loadGame(storage), s)
 })
@@ -291,7 +302,7 @@ test('refresh restores feedback and results phases without restarting', () => {
     setItem: (k: string, v: string) => void store.set(k, v),
   }
 
-  let s = run(started(19), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+  let s = decisionReady(started(19))
   const correct = orderedChoices(s).find(choice => choice.isCorrect)!
   s = gameReducer(s, { type: 'CHOOSE', choiceId: correct.id, now: T0 + 5000 })
   assert.equal(s.phase, 'CONSEQUENCE')
@@ -338,7 +349,7 @@ test('horror rises with progress', () => {
 test('hint timer: one hint per 10 s of being stuck, restarting on progress', () => {
   let s = run(started(), { type: 'TRIGGER_ENCOUNTER' })
   assert.equal(nextHintDueAt(s), null, 'no hints before investigating')
-  s = gameReducer(s, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  s = openIncident(s, T0)
   assert.equal(nextHintDueAt(s), T0 + 10_000)
 
   const [first, ...rest] = currentEncounter(s)!.artifacts
@@ -348,18 +359,19 @@ test('hint timer: one hint per 10 s of being stuck, restarting on progress', () 
   s = gameReducer(s, { type: 'USE_HINT', now: T0 + 14_000 })
   assert.equal(nextHintDueAt(s), T0 + 24_000, 'next hint 10 s after the last one')
 
-  s = gameReducer(s, { type: 'OPEN_DECISION' })
-  assert.notEqual(nextHintDueAt(s), null, 'hints keep coming on the decision sheet')
+  s = takeInNarrative(s)
+  assert.equal(openPending(s), s, 'the decision stays closed while key evidence is missing')
+  assert.notEqual(nextHintDueAt(s), null, 'so hints keep coming')
 
   for (const a of rest) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id, now: T0 + 25_000 })
   assert.equal(nextHintDueAt(s), null, 'no hints once all key evidence is found')
 })
 
 test('hint timer stops when hints run out or the encounter ends', () => {
-  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  let s = investigating(started())
   for (let i = 0; i < 3; i++) s = gameReducer(s, { type: 'USE_HINT', now: T0 + i })
   assert.equal(nextHintDueAt(s), null)
-  s = gameReducer(s, { type: 'OPEN_DECISION' })
+  s = openPending(findEvidence(takeInNarrative(s)))
   s = gameReducer(s, { type: 'CHOOSE', choiceId: orderedChoices(s)[0].id, now: T0 + 30_000 })
   assert.equal(nextHintDueAt(s), null)
 })

@@ -5,6 +5,12 @@
 // so a double tap or a stale button can never skip ahead, complete an encounter
 // twice, or finish the run early. Use canDispatch() to grey out buttons.
 //
+// The reducer is also the only authority for narrative progression (see
+// narrative.ts): screens report what the player did with REPORT_PHONE_EVENT,
+// and the reducer decides whether that completes a scenario or unlocks a
+// decision. OPEN_DECISION and CHOOSE are checked against checkDecision(), so a
+// decision from another character, encounter or scenario can never open.
+//
 // The reducer is pure: time comes in on the action (`now`, in ms) and
 // randomness comes from the run's seed. That makes every run replayable.
 
@@ -15,24 +21,50 @@ import type {
   Encounter,
   GamePhase,
   GameState,
+  PhoneEvent,
 } from './types.ts'
 import { CHARACTERS } from './content/index.ts'
 import { createRng, pick, shuffle } from './random.ts'
 import { scoreDecision } from './scoring.ts'
+import { advanceAttacks, initialAttackProgress, markAttackNotified } from './attacks.ts'
+import {
+  CLUE_DWELL_MS,
+  PHONE_TARGETS,
+  advanceScenarios,
+  checkDecision,
+  deliverIncident,
+  initialNarrativeState,
+  isDiscoverable,
+  lockedNarrative,
+  orderByDependencies,
+  recordPhoneEvent,
+  refreshPendingDecision,
+  requiredEncounters,
+  resolveEncounter,
+  submitDecision,
+  unlockQueuedEncounter,
+} from './narrative.ts'
 
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 export const ENCOUNTERS_PER_RUN = 8
 
 export type GameAction =
   | { type: 'START_RUN'; seed: number; now: number; characterId?: string }
   | { type: 'ENTER_PHONE' }
-  | { type: 'TRIGGER_ENCOUNTER' }
-  | { type: 'BEGIN_INVESTIGATION'; now: number }
-  | { type: 'INSPECT_ARTIFACT'; artifactId: string; now: number }
+  | { type: 'TRIGGER_ENCOUNTER' } // deliver the active encounter's incident, if it is due
+  | { type: 'REPORT_PHONE_EVENT'; event: PhoneEvent; now: number }
+  | { type: 'INSPECT_ARTIFACT'; artifactId: string; now: number } // optional shortcut: discover at once
+  // Automatic discovery: a clue's content came on screen / left it. After
+  // CLUE_DWELL_MS of continuous viewing, CLUE_TICK (or leaving) discovers it.
+  | { type: 'CLUE_VISIBLE'; artifactId: string; now: number }
+  | { type: 'CLUE_HIDDEN'; artifactId: string; now: number }
+  | { type: 'CLUES_HIDDEN'; now: number } // the page went to the background
+  | { type: 'CLUE_TICK'; now: number }
+  | { type: 'ATTACK_NOTIFIED'; attackId: string } // the attack's notification has been shown
   | { type: 'USE_HINT'; now: number }
-  | { type: 'OPEN_DECISION' }
-  | { type: 'BACK_TO_INVESTIGATION' }
-  | { type: 'CHOOSE'; choiceId: string; now: number }
+  | { type: 'OPEN_DECISION'; decisionId: string }
+  | { type: 'BACK_TO_INVESTIGATION' } // close the decision sheet; the decision stays pending
+  | { type: 'CHOOSE'; choiceId: string; now: number; decisionId?: string }
   | { type: 'CONTINUE' } // CONSEQUENCE -> ENCOUNTER_COMPLETE
   | { type: 'NEXT_ENCOUNTER'; now: number } // ENCOUNTER_COMPLETE -> PHONE_IDLE or RESULTS
   | { type: 'PLAY_AGAIN'; seed: number; now: number }
@@ -42,16 +74,18 @@ export type GameAction =
   | { type: 'DEV_RESET' }
 
 // Which actions each phase accepts. Anything else is ignored.
+const CLUE_ACTIONS = ['CLUE_VISIBLE', 'CLUE_HIDDEN', 'CLUES_HIDDEN', 'CLUE_TICK'] as const
+
 const ALLOWED: Record<GamePhase, readonly GameAction['type'][]> = {
   MAIN_MENU: ['START_RUN'],
-  CHARACTER_ASSIGNMENT: ['ENTER_PHONE', 'COMPLETE_SECURITY_TASK'],
-  PHONE_IDLE: ['TRIGGER_ENCOUNTER', 'COMPLETE_SECURITY_TASK'],
-  ENCOUNTER_INTRO: ['BEGIN_INVESTIGATION', 'COMPLETE_SECURITY_TASK'],
-  INVESTIGATION: ['INSPECT_ARTIFACT', 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK'],
-  DECISION: ['INSPECT_ARTIFACT', 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE', 'COMPLETE_SECURITY_TASK'],
-  CONSEQUENCE: ['CONTINUE', 'COMPLETE_SECURITY_TASK'],
-  ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER', 'COMPLETE_SECURITY_TASK'],
-  RESULTS: ['PLAY_AGAIN'],
+  CHARACTER_ASSIGNMENT: ['ENTER_PHONE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  PHONE_IDLE: ['TRIGGER_ENCOUNTER', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  ENCOUNTER_INTRO: ['REPORT_PHONE_EVENT', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  INVESTIGATION: ['REPORT_PHONE_EVENT', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  DECISION: ['REPORT_PHONE_EVENT', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  CONSEQUENCE: ['CONTINUE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  RESULTS: ['PLAY_AGAIN', 'ATTACK_NOTIFIED'],
 }
 
 const DEV_ACTIONS: readonly GameAction['type'][] = ['DEV_JUMP_TO_ENCOUNTER', 'DEV_RESET']
@@ -80,6 +114,9 @@ export function initialGameState(): GameState {
     lastProgressAt: null,
     runFinishedAt: null,
     completedSecurityTasks: [],
+    narrative: initialNarrativeState(),
+    clueViewing: {},
+    attacks: initialAttackProgress(),
   }
 }
 
@@ -149,7 +186,8 @@ function newRun(seed: number, now: number, previousCharacterId: string | null, f
   if (pool.length === 0) return null
   const character = pick(pool, rng)
 
-  const encounterQueue = shuffle(character.encounters.map(e => e.id), rng)
+  // The shuffle only orders encounters that do not depend on each other.
+  const encounterQueue = orderByDependencies(shuffle(character.encounters.map(e => e.id), rng), requiredEncounters)
   const choiceOrder: Record<string, string[]> = {}
   const choiceRng = createRng((seed ^ 0x9e3779b9) >>> 0)
   for (const e of character.encounters) {
@@ -167,12 +205,20 @@ function newRun(seed: number, now: number, previousCharacterId: string | null, f
     choiceOrder,
     walletBalance: character.startingBalance,
     runStartedAt: now,
+    narrative: lockedNarrative(encounterQueue),
   }
 }
 
 // ---------------------------------------------------------------- reducer
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
+  const next = reduce(state, action)
+  // Cyberattacks follow the narrative: an incident arriving triggers its attack,
+  // its decision being submitted resolves it. Never the decision's result.
+  return next === state ? state : advanceAttacks(next)
+}
+
+function reduce(state: GameState, action: GameAction): GameState {
   if (!canDispatch(state, action.type)) return state
 
   switch (action.type) {
@@ -183,26 +229,50 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return newRun(action.seed, action.now, state.characterId) ?? state
 
     case 'ENTER_PHONE':
-      return { ...state, phase: 'PHONE_IDLE' }
+      return unlockQueuedEncounter({ ...state, phase: 'PHONE_IDLE' })
 
-    case 'TRIGGER_ENCOUNTER':
-      if (!currentEncounter(state)) return state
-      return { ...state, phase: 'ENCOUNTER_INTRO' }
-
-    case 'BEGIN_INVESTIGATION':
-      return { ...state, phase: 'INVESTIGATION', encounterStartedAt: action.now, lastProgressAt: action.now }
-
-    case 'INSPECT_ARTIFACT': {
-      const encounter = currentEncounter(state)
-      if (!encounter) return state
-      if (!encounter.artifacts.some(a => a.id === action.artifactId)) return state
-      if (state.inspectedArtifacts.includes(action.artifactId)) return state
-      return {
-        ...state,
-        inspectedArtifacts: [...state.inspectedArtifacts, action.artifactId],
-        lastProgressAt: action.now,
-      }
+    case 'TRIGGER_ENCOUNTER': {
+      const next = deliverIncident(state)
+      return next === state ? state : { ...next, phase: 'ENCOUNTER_INTRO' }
     }
+
+    case 'REPORT_PHONE_EVENT': {
+      if (action.event.kind === 'ARTIFACT_VIEWED') {
+        const prefix = PHONE_TARGETS.artifact('')
+        return action.event.target.startsWith(prefix) ? inspectArtifact(state, action.event.target.slice(prefix.length), action.now) : state
+      }
+      const recorded = recordPhoneEvent(state, action.event)
+      if (recorded === state) return state
+      return progress(recorded, action.now)
+    }
+
+    case 'INSPECT_ARTIFACT':
+      return inspectArtifact(state, action.artifactId, action.now)
+
+    case 'CLUE_VISIBLE': {
+      const { artifactId, now } = action
+      if (state.inspectedArtifacts.includes(artifactId)) return state // already found: no second wait
+      if (artifactId in state.clueViewing || !isDiscoverable(state, artifactId)) return state
+      return { ...state, clueViewing: { ...state.clueViewing, [artifactId]: now } }
+    }
+
+    case 'CLUE_HIDDEN': {
+      if (!(action.artifactId in state.clueViewing)) return state
+      const settled = settleClues(state, action.now)
+      if (!(action.artifactId in settled.clueViewing)) return settled
+      return { ...settled, clueViewing: without(settled.clueViewing, action.artifactId) }
+    }
+
+    case 'CLUES_HIDDEN': {
+      if (Object.keys(state.clueViewing).length === 0) return state
+      return { ...settleClues(state, action.now), clueViewing: {} }
+    }
+
+    case 'CLUE_TICK':
+      return settleClues(state, action.now)
+
+    case 'ATTACK_NOTIFIED':
+      return markAttackNotified(state, action.attackId)
 
     case 'USE_HINT': {
       const encounter = currentEncounter(state)
@@ -212,45 +282,118 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, hintsUsed: { ...state.hintsUsed, [encounter.id]: used + 1 }, lastProgressAt: action.now }
     }
 
-    case 'OPEN_DECISION':
+    case 'OPEN_DECISION': {
+      if (state.narrative.pendingDecisionId !== action.decisionId) return state
+      if (!checkDecision(state, action.decisionId).ok) return state
       return { ...state, phase: 'DECISION' }
+    }
 
     case 'BACK_TO_INVESTIGATION':
       return { ...state, phase: 'INVESTIGATION' }
 
     case 'CHOOSE':
-      return choose(state, action.choiceId, action.now)
+      return choose(state, action.choiceId, action.now, action.decisionId ?? state.narrative.pendingDecisionId)
 
     case 'CONTINUE':
-      return { ...state, phase: 'ENCOUNTER_COMPLETE' }
+      return resolveEncounter({ ...state, phase: 'ENCOUNTER_COMPLETE' })
 
     case 'NEXT_ENCOUNTER': {
       const nextIndex = state.currentEncounterIndex + 1
+      const idle = { ...state, encounterStartedAt: null, lastProgressAt: null, clueViewing: {} }
       if (state.completedEncounters.length >= ENCOUNTERS_PER_RUN || nextIndex >= state.encounterQueue.length) {
-        return { ...state, phase: 'RESULTS', encounterStartedAt: null, lastProgressAt: null, runFinishedAt: action.now }
+        return {
+          ...idle,
+          phase: 'RESULTS',
+          runFinishedAt: action.now,
+          narrative: { ...state.narrative, activeEncounterId: null, activeScenarioId: null, pendingDecisionId: null },
+        }
       }
-      return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: nextIndex, encounterStartedAt: null, lastProgressAt: null }
+      return unlockQueuedEncounter({ ...idle, phase: 'PHONE_IDLE', currentEncounterIndex: nextIndex })
     }
 
-
     case 'DEV_JUMP_TO_ENCOUNTER': {
+      // Developer shortcut: makes the chosen encounter active and available,
+      // skipping its prerequisites. Its scenarios and decision still have to
+      // be played normally.
       if (!state.characterId) return state
       if (action.index < 0 || action.index >= state.encounterQueue.length) return state
-      return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: action.index, encounterStartedAt: null, lastProgressAt: null }
+      const id = state.encounterQueue[action.index]
+      const reset = lockedNarrative([id])
+      const clearedActions = { ...state.narrative.completedActions }
+      for (const scenarioId of Object.keys(reset.scenarioLifecycle)) delete clearedActions[scenarioId]
+      return {
+        ...state,
+        phase: 'PHONE_IDLE',
+        currentEncounterIndex: action.index,
+        encounterStartedAt: null,
+        lastProgressAt: null,
+        narrative: {
+          ...state.narrative,
+          activeEncounterId: id,
+          activeScenarioId: null,
+          pendingDecisionId: null,
+          encounterLifecycle: { ...state.narrative.encounterLifecycle, [id]: 'AVAILABLE' },
+          scenarioLifecycle: { ...state.narrative.scenarioLifecycle, ...reset.scenarioLifecycle },
+          completedActions: clearedActions,
+        },
+      }
     }
 
     case 'DEV_RESET':
       return initialGameState()
+
     case 'COMPLETE_SECURITY_TASK':
       if (state.completedSecurityTasks.includes(action.taskId)) return state
       return { ...state, completedSecurityTasks: [...state.completedSecurityTasks, action.taskId] }
   }
 }
 
-function choose(state: GameState, choiceId: string, now: number): GameState {
+// After a recorded phone event or new evidence: complete finished scenarios,
+// move from the incident into the investigation, and refresh the pending decision.
+function progress(state: GameState, now: number): GameState {
+  const { state: advanced, completed } = advanceScenarios(state)
+  let next = advanced
+  if (next.phase === 'ENCOUNTER_INTRO' && completed.some(s => s.startsWhen.kind === 'incident-delivered')) {
+    next = { ...next, phase: 'INVESTIGATION', encounterStartedAt: now, lastProgressAt: now }
+  }
+  return refreshPendingDecision(next)
+}
+
+function inspectArtifact(state: GameState, artifactId: string, now: number): GameState {
+  if (state.inspectedArtifacts.includes(artifactId)) return state
+  if (!isDiscoverable(state, artifactId)) return state
+  const clueViewing = without(state.clueViewing, artifactId)
+  return progress({ ...state, inspectedArtifacts: [...state.inspectedArtifacts, artifactId], lastProgressAt: now, clueViewing }, now)
+}
+
+function without(record: Record<string, number>, key: string): Record<string, number> {
+  const copy = { ...record }
+  delete copy[key]
+  return copy
+}
+
+// Discovers every clue that has been on screen for CLUE_DWELL_MS without a
+// break, and drops timers for clues that can no longer be discovered.
+function settleClues(state: GameState, now: number): GameState {
+  let next = state
+  for (const [artifactId, since] of Object.entries(state.clueViewing)) {
+    if (!isDiscoverable(next, artifactId)) {
+      next = { ...next, clueViewing: without(next.clueViewing, artifactId) }
+    } else if (now - since >= CLUE_DWELL_MS) {
+      next = inspectArtifact(next, artifactId, now)
+    }
+  }
+  return next
+}
+
+function choose(state: GameState, choiceId: string, now: number, decisionId: string | null): GameState {
   const encounter = currentEncounter(state)
-  if (!encounter) return state
+  if (!encounter || state.phase !== 'DECISION') return state
+  if (decisionId === null || decisionId !== state.narrative.pendingDecisionId) return state
+  const check = checkDecision(state, decisionId)
+  if (!check.ok || check.decision.encounterId !== encounter.id) return state
   if (state.completedEncounters.includes(encounter.id)) return state
+  if (!check.decision.choiceIds.includes(choiceId)) return state
   const choice = encounter.choices.find(c => c.id === choiceId)
   if (!choice) return state
 
@@ -289,14 +432,20 @@ function choose(state: GameState, choiceId: string, now: number): GameState {
   const consequences: AppliedConsequence[] =
     kind === 'none' ? state.consequences : [...state.consequences, { encounterId: encounter.id, kind, amount, message }]
 
-  return {
-    ...state,
-    phase: 'CONSEQUENCE',
-    completedEncounters: [...state.completedEncounters, encounter.id],
-    decisionHistory: [...state.decisionHistory, record],
-    playerScore: state.playerScore + score.total,
-    walletBalance,
-    accountSecurity,
-    consequences,
-  }
+  return submitDecision(
+    {
+      ...state,
+      phase: 'CONSEQUENCE',
+      clueViewing: {},
+      completedEncounters: [...state.completedEncounters, encounter.id],
+      decisionHistory: [...state.decisionHistory, record],
+      playerScore: state.playerScore + score.total,
+      walletBalance,
+      accountSecurity,
+      consequences,
+    },
+    check.decision,
+    choice.id,
+    choice.isCorrect,
+  )
 }

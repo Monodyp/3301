@@ -2,23 +2,25 @@ import { useState } from 'react'
 import type { Game } from '../../game/useGame'
 import { CHARACTERS } from '../../game/content/index'
 import type { GameAction } from '../../game/engine'
+import { checkDecision } from '../../game/narrative'
 
 // Dev-only panel (open the game with ?dev=1) for driving the engine without
 // the real screens: start a run with a fixed seed, step through phases,
-// inspect evidence, pick answers, and jump to any encounter.
+// perform the active scenario's required actions, inspect evidence, pick
+// answers, and jump to any encounter. It goes through the same reducer checks
+// as the phone, so it cannot open a decision early either.
 
 const STEPS: { type: GameAction['type']; label: string }[] = [
   { type: 'ENTER_PHONE', label: 'Enter phone' },
-  { type: 'TRIGGER_ENCOUNTER', label: 'Trigger' },
-  { type: 'BEGIN_INVESTIGATION', label: 'Investigate' },
-  { type: 'OPEN_DECISION', label: 'Decide' },
+  { type: 'TRIGGER_ENCOUNTER', label: 'Deliver incident' },
+  { type: 'OPEN_DECISION', label: 'Open decision' },
   { type: 'BACK_TO_INVESTIGATION', label: 'Back' },
   { type: 'CONTINUE', label: 'Continue' },
   { type: 'NEXT_ENCOUNTER', label: 'Next' },
 ]
 
 export function EnginePanel({ game }: { game: Game }) {
-  const { state, actions, can, character, encounter, choices, lastDecision, hintsShown, nextHintAt } = game
+  const { state, actions, can, character, encounter, choices, lastDecision, hintsShown, nextHintAt, scenario, pendingDecision } = game
   const [seedText, setSeedText] = useState('')
   const [characterId, setCharacterId] = useState('')
   const seed = seedText.trim() === '' ? undefined : Number(seedText) >>> 0
@@ -27,9 +29,8 @@ export function EnginePanel({ game }: { game: Game }) {
     switch (type) {
       case 'ENTER_PHONE': return actions.enterPhone()
       case 'TRIGGER_ENCOUNTER': return actions.triggerEncounter()
-      case 'BEGIN_INVESTIGATION': return actions.beginInvestigation()
-      case 'OPEN_DECISION': return actions.openDecision()
-      case 'BACK_TO_INVESTIGATION': return actions.backToInvestigation()
+      case 'OPEN_DECISION': return pendingDecision && actions.openDecision(pendingDecision.id)
+      case 'BACK_TO_INVESTIGATION': return actions.closeDecision()
       case 'CONTINUE': return actions.continue()
       case 'NEXT_ENCOUNTER': return actions.nextEncounter()
     }
@@ -71,9 +72,29 @@ export function EnginePanel({ game }: { game: Game }) {
 
       <div className="engine-row engine-wrap">
         {STEPS.map(s => (
-          <button key={s.type} disabled={!can(s.type)} onClick={() => step(s.type)}>{s.label}</button>
+          <button key={s.type} disabled={!can(s.type) || (s.type === 'OPEN_DECISION' && !pendingDecision)} onClick={() => step(s.type)}>{s.label}</button>
         ))}
       </div>
+
+      {encounter && (
+        <section>
+          <h4>Narrative</h4>
+          <p className="engine-note">
+            {encounter.id}: {state.narrative.encounterLifecycle[encounter.id] ?? '—'} · scenario {scenario?.id ?? 'none'}
+          </p>
+          {scenario?.requiredActions.map(action => {
+            const done = (state.narrative.completedActions[scenario.id] ?? []).includes(action.id)
+            return (
+              <button key={action.id} className={done ? 'engine-done' : undefined} disabled={done} title={action.id} onClick={() => actions.reportPhoneEvent(action.anyOf[0])}>
+                {done ? '✓' : '○'} {action.description}
+              </button>
+            )
+          })}
+          <p className="engine-note">
+            Decision {encounter.id}-D1: {(() => { const check = checkDecision(state, `${encounter.id}-D1`); return check.ok ? 'available' : check.reason })()}
+          </p>
+        </section>
+      )}
 
       {encounter && investigating && (
         <section>

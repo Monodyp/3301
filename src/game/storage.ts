@@ -1,10 +1,16 @@
 // Saves the run to localStorage so a browser refresh restores it exactly.
 // Only "Play again" (or the dev reset) starts a new run.
 // Storage can be missing or full on some phones, so every call is wrapped.
+//
+// A restored run is re-checked by reconcileNarrative(): a pending or open
+// decision that is not valid any more is cleared rather than shown, so an
+// edited save cannot expose a future decision or submit one twice.
 
-import type { GameState } from './types.ts'
+import type { GameState, NarrativeState } from './types.ts'
 import { SAVE_VERSION, initialGameState } from './engine.ts'
 import { getCharacter } from './content/index.ts'
+import { reconcileNarrative } from './narrative.ts'
+import { reconcileAttacks } from './attacks.ts'
 
 export const SAVE_KEY = '3301.run'
 
@@ -14,7 +20,11 @@ export function loadGame(storage: Pick<Storage, 'getItem'> | undefined = safeSto
     if (!raw) return initialGameState()
     const parsed = JSON.parse(raw) as Partial<GameState>
     if (!isUsableSave(parsed)) return initialGameState()
-    return { ...initialGameState(), ...parsed }
+    // Viewing timers never survive a refresh: time away from the page does not count.
+    const { notifiedAttackIds: _legacy, ...save } = parsed as GameState & { notifiedAttackIds?: unknown }
+    void _legacy
+    const restored = reconcileNarrative({ ...initialGameState(), ...save, clueViewing: {} })
+    return reconcileAttacks(restored, isAttackProgress(parsed.attacks))
   } catch {
     return initialGameState()
   }
@@ -45,7 +55,26 @@ function isUsableSave(save: Partial<GameState>): save is GameState {
   const character = getCharacter(save.characterId ?? null)
   if (!character) return false
   const ids = new Set(character.encounters.map(e => e.id))
-  return Array.isArray(save.encounterQueue) && save.encounterQueue.every(id => ids.has(id))
+  if (!Array.isArray(save.encounterQueue) || !save.encounterQueue.every(id => ids.has(id))) return false
+  return isNarrativeState(save.narrative)
+}
+
+function isAttackProgress(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const a = value as Record<string, unknown>
+  return Array.isArray(a.triggered) && Array.isArray(a.resolved) && Array.isArray(a.notified)
+}
+
+function isNarrativeState(value: unknown): value is NarrativeState {
+  if (typeof value !== 'object' || value === null) return false
+  const n = value as NarrativeState
+  const isRecord = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v)
+  return isRecord(n.encounterLifecycle)
+    && isRecord(n.scenarioLifecycle)
+    && isRecord(n.completedActions)
+    && isRecord(n.encounterResolution)
+    && Array.isArray(n.presentedNarrative)
+    && Array.isArray(n.submittedDecisionIds)
 }
 
 function safeStorage(): Storage | undefined {

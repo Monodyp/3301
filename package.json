@@ -8,9 +8,10 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --test tests/engine.test.ts"
+    "test": "node --test tests/engine.test.ts tests/narrative.test.ts tests/clues.test.ts tests/attacks.test.ts tests/gameplay.test.ts tests/progressiveAds.test.ts tests/voicemailStorage.test.ts tests/event.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
     "@tailwindcss/vite": "^4.3.5",
     "lucide-react": "^1.78.0",
     "react": "^19.3.1",

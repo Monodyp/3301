@@ -1,13 +1,17 @@
-import { BatteryMedium, HardDrive, Info, Wifi, Moon } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { BatteryMedium, HardDrive, Info, Wifi, Moon, ShieldAlert } from 'lucide-react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { Hint } from '../../game/types'
+import type { AttackEvent } from '../../game/attacks'
 
-export function SettingsApp({ data, accountSecurity, hints = [], completedTasks = [], onCompleteTask }: {
+export function SettingsApp({ data, accountSecurity, hints = [], completedTasks = [], onCompleteTask, securityAlerts = [], clues }: {
   data?: CharacterPhoneData
   accountSecurity?: number
   hints?: Hint[]
   completedTasks?: string[]
   onCompleteTask?: (taskId: string) => void
+  securityAlerts?: readonly AttackEvent[]
+  clues?: (surface: 'incident' | 'app') => ReactNode
 }) {
   const settings = data?.settings
   const securityStatus = accountSecurity !== undefined
@@ -16,6 +20,7 @@ export function SettingsApp({ data, accountSecurity, hints = [], completedTasks 
   return (
     <div className="app-content settings-app">
       <h2>Settings</h2>
+      {clues?.('app')}
       <div className="settings-profile"><div className="avatar" style={{ background: data?.profile.color }}>{data?.profile.name[0] ?? 'A'}</div><div><strong>{data?.profile.name ?? 'Avery'}</strong><span>{data?.profile.location ?? 'Northbridge'}</span></div></div>
       <div className="settings-group">
         <button><Wifi size={18} /><span>Wi-Fi</span><b>{settings?.wifi ?? 'Northbridge'}</b></button>
@@ -30,6 +35,21 @@ export function SettingsApp({ data, accountSecurity, hints = [], completedTasks 
         <div><strong>Security Center</strong><b className={`security-${securityStatus.toLowerCase().replace(' ', '-')}`}>{securityStatus}</b></div>
         <p>{accountSecurity !== undefined ? `Simulated account security: ${accountSecurity}/100` : 'This character uses the shared run security status.'}</p>
         {hints.length > 0 ? <p className="security-hint">Kuya Ben: {hints[hints.length - 1].text}</p> : <p className="security-hint">Kuya Ben is available if this investigation becomes difficult.</p>}
+        {securityAlerts.length > 0 && (
+          <div className="security-alerts" aria-label="Security alerts">
+            <strong>Security alerts</strong>
+            {[...securityAlerts].reverse().map(alert => (
+              <div key={alert.id} className={`security-alert attack-tier-${alert.tier}`}>
+                <ShieldAlert size={14} />
+                <span>
+                  <b>{alert.tierLabel} · Attack {alert.ordinal} · {alert.resolved ? 'Resolved' : 'Under investigation'}</b>
+                  <small><strong>{alert.title}</strong> {alert.message}</small>
+                  <em>{alert.detail}</em>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="security-tasks">
         <strong>Optional security tasks</strong>

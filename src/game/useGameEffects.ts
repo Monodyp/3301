@@ -1,6 +1,9 @@
 // Engine-driven effects that App.tsx doesn't already handle.
 // Call it once, next to useGame(), where the horror controls are available.
 //
+// - Clues on screen are discovered once they have been viewed for
+//   CLUE_DWELL_MS without a break: this timer fires CLUE_TICK at that moment.
+//   The engine re-checks the timing, so a late or early tick is harmless.
 // - Hints appear on their own when the player stalls: 10 s after the last
 //   new evidence or hint, and never once all key evidence is found
 //   (see nextHintDueAt in engine.ts).
@@ -17,7 +20,7 @@ import type { Game } from './useGame.ts'
 const GLITCH_ON: readonly ConsequenceKind[] = ['glitch', 'antagonist', 'account_compromise']
 
 export function useGameEffects(game: Game, horror: { triggerGlitch: () => void }) {
-  const { state, actions, nextHintAt } = game
+  const { state, actions, nextHintAt, nextClueAt } = game
   const { triggerGlitch } = horror
 
   // Glitch on new consequences only, never on the ones restored from a save.
@@ -30,6 +33,13 @@ export function useGameEffects(game: Game, horror: { triggerGlitch: () => void }
     }
     seenConsequences.current = count
   }, [state.consequences, triggerGlitch])
+
+  // Clue dwell timer.
+  useEffect(() => {
+    if (nextClueAt === null) return
+    const timer = window.setTimeout(actions.clueTick, Math.max(0, nextClueAt - Date.now()) + 20)
+    return () => window.clearTimeout(timer)
+  }, [nextClueAt, actions])
 
   // Hint timer.
   useEffect(() => {

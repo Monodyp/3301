@@ -10,13 +10,15 @@ export function EvidenceTray({ game, openApp }: { game: Game; openApp: (app: App
   const discovered = game.character?.encounters.flatMap(item => item.artifacts).filter(artifact =>
     game.state.inspectedArtifacts.includes(artifact.id),
   ) ?? []
+  const found = game.state.inspectedArtifacts.filter(id => encounter.artifacts.some(a => a.id === id)).length
 
   return (
     <>
-      <button className="evidence-tray-toggle" onClick={() => setOpen(value => !value)} aria-expanded={open}>
+      <button className="evidence-tray-toggle" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label={`Evidence ${found} of ${encounter.artifacts.length} found`}>
         <Search size={16} />
         Evidence
-        <b>{game.state.inspectedArtifacts.filter(id => encounter.artifacts.some(a => a.id === id)).length}/{encounter.artifacts.length}</b>
+        {/* Keyed by the count so the badge pulses each time a clue is found. */}
+        <b key={found} className={found > 0 ? 'evidence-count-pulse' : undefined}>{found}/{encounter.artifacts.length}</b>
       </button>
       {open && (
         <aside className="evidence-tray" aria-label="Evidence tray">
@@ -30,10 +32,8 @@ export function EvidenceTray({ game, openApp }: { game: Game; openApp: (app: App
               <button
                 key={artifact.id}
                 className={`evidence-item ${discovered ? 'discovered' : ''}`}
-                onClick={() => {
-                  if (discovered) openApp(artifact.app)
-                  else game.actions.inspect(artifact.id)
-                }}
+                disabled={!discovered}
+                onClick={() => discovered && openApp(artifact.app)}
               >
                 <Search size={14} />
                 <span>
@@ -60,30 +60,6 @@ export function EvidenceTray({ game, openApp }: { game: Game; openApp: (app: App
   )
 }
 
-export function ArtifactLayer({ game, app }: { game: Game; app: AppId | null }) {
-  const encounter = game.encounter
-  if (!encounter || !['INVESTIGATION', 'DECISION'].includes(game.state.phase)) return null
-  const openedArtifacts = encounter.artifacts.filter(artifact => artifact.app === app)
-  return (
-    <div className="artifact-layer" aria-label="Inspectable encounter evidence">
-      {openedArtifacts.map(artifact => {
-        const discovered = game.state.inspectedArtifacts.includes(artifact.id)
-        return (
-          <button
-            key={artifact.id}
-            className={`artifact-cue ${discovered ? 'inspected' : ''}`}
-            onClick={() => game.actions.inspect(artifact.id)}
-            title={discovered ? artifact.detail : 'Inspect evidence'}
-          >
-            <Search size={12} />
-            <span>{discovered ? 'Inspected' : 'Inspect'}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 export function InvestigationHints({ game }: { game: Game }) {
   if (!game.encounter || !['INVESTIGATION', 'DECISION'].includes(game.state.phase)) return null
   const latest = game.hintsShown[game.hintsShown.length - 1]
@@ -96,24 +72,60 @@ export function InvestigationHints({ game }: { game: Game }) {
   )
 }
 
+// Shown only while the engine has a validated pending decision, so the player
+// can reopen a decision sheet they closed. There is no general "decide" button.
+export function PendingDecisionChip({ game }: { game: Game }) {
+  const decision = game.pendingDecision
+  const encounter = game.encounter
+  if (!decision || !encounter || game.state.phase !== 'INVESTIGATION') return null
+  return (
+    <button className="pending-decision-chip" onClick={() => game.actions.openDecision(decision.id)}>
+      <ShieldAlert size={15} />
+      <span><small>Decision pending</small><strong>Respond to {encounter.trigger.sender}</strong></span>
+    </button>
+  )
+}
+
+// The pending decision, with the context it belongs to. Closing it keeps the
+// decision pending and all evidence; nothing is submitted until Confirm.
+// Render it with key={decision id} so a new decision starts unselected.
 export function DecisionSheet({ game }: { game: Game }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
-  useEffect(() => {
-    setSelected(null)
-    setSubmitted(false)
-  }, [game.encounter?.id])
+  const { closeDecision } = game.actions
+  const open = game.state.phase === 'DECISION'
 
-  if (!game.encounter || game.state.phase !== 'DECISION') return null
+  useEffect(() => {
+    if (!open) return
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDecision()
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [closeDecision, open])
+
+  const encounter = game.encounter
+  const decision = game.pendingDecision
+  if (!encounter || !decision || !open) return null
+  const evidence = encounter.artifacts.filter(artifact => game.state.inspectedArtifacts.includes(artifact.id))
   const submit = () => {
     if (!selected || submitted) return
     setSubmitted(true)
-    game.actions.choose(selected)
+    game.actions.choose(selected, decision.id)
   }
   return (
-    <aside className="decision-sheet" aria-label="Decision sheet">
-      <strong>{game.encounter.prompt}</strong>
-      <p>{game.encounter.lesson}</p>
+    <aside className="decision-sheet" role="dialog" aria-modal="true" aria-labelledby="decision-prompt">
+      <button className="decision-close" aria-label="Close decision" onClick={closeDecision}><X size={18} /></button>
+      <span className="decision-context-label">{encounter.title} · {encounter.trigger.sender}</span>
+      <blockquote className="decision-context">{encounter.trigger.message}</blockquote>
+      <details className="decision-evidence">
+        <summary>Evidence found ({evidence.length})</summary>
+        <ul>
+          {evidence.map(artifact => <li key={artifact.id}><strong>{artifact.label}</strong> {artifact.detail}</li>)}
+        </ul>
+      </details>
+      <strong id="decision-prompt">{decision.prompt}</strong>
+      <p>{encounter.lesson}</p>
       <div className="decision-options">
         {game.choices.map(option => (
           <button

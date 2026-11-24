@@ -20,15 +20,14 @@ export function HorrorOverlay({ stage, glitchActive, glitchId, warningVisible, w
         </div>
       )}
       {warningVisible && (
-        <div className="compromise-warning" role="alertdialog" aria-modal="true" aria-labelledby="integrity-title" key={warningId}>
+        <div className="compromise-warning" role="status" aria-live="polite" aria-labelledby="integrity-title" key={warningId}>
           <div className="warning-content">
             <span className="warning-mark" aria-hidden="true">!</span>
-            <p className="warning-kicker">3301 DEVICE SECURITY</p>
-            <h2 id="integrity-title">SYSTEM INTEGRITY FAILURE</h2>
-            <p>UNAUTHORIZED ACTIVITY DETECTED</p>
-            <p>DEVICE STATUS: COMPROMISED</p>
-            <p>UNKNOWN PROCESS DETECTED</p>
-            <button onClick={onDismissWarning}>DISMISS WARNING</button>
+            <div className="warning-message">
+              <h2 id="integrity-title">DEVICE COMPROMISED</h2>
+              <p>Unauthorized activity detected.</p>
+            </div>
+            <button aria-label="Dismiss security warning" onClick={onDismissWarning}>×</button>
           </div>
         </div>
       )}
