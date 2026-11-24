@@ -522,7 +522,7 @@ export const mika: Character = {
       clue: {
         id: 'MK-O1-PBI-04',
         group: 'PBI-04',
-        fragment: 'CAMPAIGN SOURCE: BC-07 / CREATOR NETWORK',
+        fragment: 'AGENCY CONTROL INDICATOR / CREATOR NETWORK',
         requires: ['MK-O1-ART-01', 'MK-O1-ART-02', 'MK-O1-ART-03'],
       },
       hints: [
@@ -593,7 +593,7 @@ export const mika: Character = {
       clue: {
         id: 'MK-O2-PBI-05',
         group: 'PBI-05',
-        fragment: 'CAMPAIGN SOURCE: BC-07 / DEVICE EXPOSURE PATH',
+        fragment: 'SOFTWARE DELIVERY INDICATOR / DEVICE EXPOSURE PATH',
         requires: ['MK-O2-ART-01', 'MK-O2-ART-02'],
       },
       hints: [

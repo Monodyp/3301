@@ -34,8 +34,7 @@ export type GameAction =
   | { type: 'BACK_TO_INVESTIGATION' }
   | { type: 'CHOOSE'; choiceId: string; now: number }
   | { type: 'CONTINUE' } // CONSEQUENCE -> ENCOUNTER_COMPLETE
-  | { type: 'NEXT_ENCOUNTER' } // ENCOUNTER_COMPLETE -> PHONE_IDLE or FINAL_REVEAL
-  | { type: 'SHOW_RESULTS'; now: number }
+  | { type: 'NEXT_ENCOUNTER'; now: number } // ENCOUNTER_COMPLETE -> PHONE_IDLE or RESULTS
   | { type: 'PLAY_AGAIN'; seed: number; now: number }
   | { type: 'COMPLETE_SECURITY_TASK'; taskId: string }
   // Dev-panel only:
@@ -52,7 +51,6 @@ const ALLOWED: Record<GamePhase, readonly GameAction['type'][]> = {
   DECISION: ['INSPECT_ARTIFACT', 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE', 'COMPLETE_SECURITY_TASK'],
   CONSEQUENCE: ['CONTINUE', 'COMPLETE_SECURITY_TASK'],
   ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER', 'COMPLETE_SECURITY_TASK'],
-  FINAL_REVEAL: ['SHOW_RESULTS', 'COMPLETE_SECURITY_TASK'],
   RESULTS: ['PLAY_AGAIN'],
 }
 
@@ -74,7 +72,6 @@ export function initialGameState(): GameState {
     hintsUsed: {},
     decisionHistory: [],
     consequences: [],
-    blackoutClues: [],
     playerScore: 0,
     walletBalance: 0,
     accountSecurity: 100,
@@ -130,12 +127,11 @@ function newRun(seed: number, now: number, previousCharacterId: string | null, f
   if (pool.length === 0) return null
   const character = pick(pool, rng)
 
-  // Encounter order is authored content, not randomized. Choice order remains
-  // shuffled so the same narrative cannot always expose the correct answer first.
-  const encounterQueue = character.encounters.map(e => e.id)
+  const encounterQueue = shuffle(character.encounters.map(e => e.id), rng)
   const choiceOrder: Record<string, string[]> = {}
+  const choiceRng = createRng((seed ^ 0x9e3779b9) >>> 0)
   for (const e of character.encounters) {
-    choiceOrder[e.id] = shuffle(e.choices.map(c => c.id), rng)
+    choiceOrder[e.id] = shuffle(e.choices.map(c => c.id), choiceRng)
   }
 
   return {
@@ -179,15 +175,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!encounter) return state
       if (!encounter.artifacts.some(a => a.id === action.artifactId)) return state
       if (state.inspectedArtifacts.includes(action.artifactId)) return state
-
-      const inspectedArtifacts = [...state.inspectedArtifacts, action.artifactId]
-      const clue = encounter.clue
-      const unlocked =
-        !state.blackoutClues.includes(clue.id) && clue.requires.every(id => inspectedArtifacts.includes(id))
       return {
         ...state,
-        inspectedArtifacts,
-        blackoutClues: unlocked ? [...state.blackoutClues, clue.id] : state.blackoutClues,
+        inspectedArtifacts: [...state.inspectedArtifacts, action.artifactId],
       }
     }
 
@@ -214,13 +204,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'NEXT_ENCOUNTER': {
       const nextIndex = state.currentEncounterIndex + 1
       if (state.completedEncounters.length >= ENCOUNTERS_PER_RUN || nextIndex >= state.encounterQueue.length) {
-        return { ...state, phase: 'FINAL_REVEAL', encounterStartedAt: null }
+        return { ...state, phase: 'RESULTS', encounterStartedAt: null, runFinishedAt: action.now }
       }
       return { ...state, phase: 'PHONE_IDLE', currentEncounterIndex: nextIndex, encounterStartedAt: null }
     }
 
-    case 'SHOW_RESULTS':
-      return { ...state, phase: 'RESULTS', runFinishedAt: action.now }
 
     case 'DEV_JUMP_TO_ENCOUNTER': {
       if (!state.characterId) return state

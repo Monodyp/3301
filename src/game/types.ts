@@ -157,7 +157,6 @@ export type GamePhase =
   | 'DECISION'
   | 'CONSEQUENCE' // outcome and feedback card
   | 'ENCOUNTER_COMPLETE'
-  | 'FINAL_REVEAL'
   | 'RESULTS'
 
 export interface ScoreBreakdown {
@@ -202,7 +201,6 @@ export interface GameState {
   hintsUsed: Record<string, number> // encounter id -> hints shown
   decisionHistory: DecisionRecord[]
   consequences: AppliedConsequence[]
-  blackoutClues: string[] // unlocked clue ids
   playerScore: number
   walletBalance: number
   accountSecurity: number // 0–100

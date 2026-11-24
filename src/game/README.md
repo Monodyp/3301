@@ -18,7 +18,7 @@ All run state lives here. Screens read it through `useGame()` and change it only
 
 ```
 MAIN_MENU -> CHARACTER_ASSIGNMENT -> PHONE_IDLE -> ENCOUNTER_INTRO -> INVESTIGATION <-> DECISION
-          -> CONSEQUENCE -> ENCOUNTER_COMPLETE -> (PHONE_IDLE for the next one | FINAL_REVEAL after 8) -> RESULTS
+          -> CONSEQUENCE -> ENCOUNTER_COMPLETE -> (PHONE_IDLE for the next one | RESULTS after 8)
 RESULTS --Play again--> CHARACTER_ASSIGNMENT (new character, new order)
 ```
 
@@ -32,7 +32,6 @@ RESULTS --Play again--> CHARACTER_ASSIGNMENT (new character, new order)
 | `DECISION` | Decision sheet with `game.choices` (already shuffled) | `actions.choose(id)` or `actions.backToInvestigation()` |
 | `CONSEQUENCE` | Outcome, `encounter.feedback`, `game.lastDecision.score` | `actions.continue()` |
 | `ENCOUNTER_COMPLETE` | (short transition) | `actions.nextEncounter()` |
-| `FINAL_REVEAL` | Project Blackout directory, using `state.blackoutClues` | `actions.showResults()` |
 | `RESULTS` | Score, `game.rating`, `game.categoryResults` | `actions.playAgain()` |
 
 Use `game.can('CHOOSE')` and similar to disable buttons that wouldn't do anything.

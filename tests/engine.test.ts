@@ -44,7 +44,7 @@ function playWholeRun(state: GameState, correctPattern: boolean[]): GameState {
   let s = state
   for (const correct of correctPattern) {
     s = playEncounter(s, correct)
-    s = gameReducer(s, { type: 'NEXT_ENCOUNTER' })
+    s = gameReducer(s, { type: 'NEXT_ENCOUNTER', now: T0 + 50000 })
   }
   return s
 }
@@ -58,15 +58,15 @@ test('Mika and Rafa each have complete, sequential encounter runs', () => {
     const s = run(initialGameState(), { type: 'START_RUN', seed: 77, now: T0, characterId }, { type: 'ENTER_PHONE' })
     const character = CHARACTERS.find(c => c.id === characterId)!
     assert.equal(s.characterId, characterId)
-    assert.deepEqual(
-      s.encounterQueue,
-      character.encounters.map(encounter => encounter.id),
-      `${characterId} should follow authored encounter order`,
-    )
+    assert.equal(s.encounterQueue.length, 8)
+    assert.equal(new Set(s.encounterQueue).size, 8)
+    const archetypes = s.encounterQueue.map(id => character.encounters.find(encounter => encounter.id === id)!.archetype)
+    assert.equal(archetypes.filter(archetype => archetype.startsWith('A')).length, 3)
+    assert.equal(archetypes.filter(archetype => archetype.startsWith('R')).length, 3)
+    assert.equal(archetypes.filter(archetype => archetype.startsWith('O')).length, 2)
     const completed = playWholeRun(s, Array(8).fill(true))
-    assert.equal(completed.phase, 'FINAL_REVEAL')
+    assert.equal(completed.phase, 'RESULTS')
     assert.equal(completed.completedEncounters.length, 8)
-    assert.equal(completed.blackoutClues.length, 8)
   }
 })
 
@@ -156,18 +156,40 @@ test('encounter order and choice order vary between runs', () => {
     orders.add(s.encounterQueue.join())
     firstChoice.add(s.choiceOrder['MK-A1'][0])
   }
-  assert.equal(orders.size, 1, 'the authored encounter sequence must remain stable')
+  assert.ok(orders.size > 40, `only ${orders.size} distinct encounter orders in 50 runs`)
   assert.ok(firstChoice.size >= 3, 'the correct answer is not always in the same position')
+})
+
+test('same seed restores the same encounter order and Play Again creates a new session', () => {
+  const first = run(initialGameState(), { type: 'START_RUN', seed: 1234, now: T0, characterId: 'mika' }, { type: 'ENTER_PHONE' })
+  const repeat = run(initialGameState(), { type: 'START_RUN', seed: 1234, now: T0, characterId: 'mika' }, { type: 'ENTER_PHONE' })
+  assert.deepEqual(repeat.encounterQueue, first.encounterQueue)
+
+  const store = new Map<string, string>()
+  const storage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+  }
+  saveGame(first, storage)
+  assert.deepEqual(loadGame(storage).encounterQueue, first.encounterQueue)
+
+  const completed = { ...loadGame(storage), phase: 'RESULTS' as const, completedEncounters: loadGame(storage).encounterQueue }
+  const next = gameReducer(completed, { type: 'PLAY_AGAIN', seed: 5678, now: T0 + 1000 })
+  assert.equal(next.seed, 5678)
+  assert.notDeepEqual(next.encounterQueue, first.encounterQueue)
+  assert.equal(next.completedEncounters.length, 0)
+  assert.equal(next.playerScore, 0)
+  assert.equal(next.inspectedArtifacts.length, 0)
+  assert.equal(next.accountSecurity, 100)
 })
 
 test('illegal transitions are ignored', () => {
   const menu = initialGameState()
   assert.equal(gameReducer(menu, { type: 'CHOOSE', choiceId: 'MK-A1-c2', now: T0 }), menu)
-  assert.equal(gameReducer(menu, { type: 'SHOW_RESULTS', now: T0 }), menu)
 
   const idle = started()
   assert.equal(gameReducer(idle, { type: 'OPEN_DECISION' }), idle, 'cannot decide before investigating')
-  assert.equal(gameReducer(idle, { type: 'NEXT_ENCOUNTER' }), idle)
+  assert.equal(gameReducer(idle, { type: 'NEXT_ENCOUNTER', now: T0 }), idle)
   assert.equal(canDispatch(idle, 'TRIGGER_ENCOUNTER'), true)
   assert.equal(canDispatch(idle, 'CHOOSE'), false)
 })
@@ -181,16 +203,15 @@ test('an encounter cannot be completed twice', () => {
   assert.equal(s.decisionHistory.length, 1)
 })
 
-test('the final reveal only comes after all 8 encounters', () => {
+test('results only appear after all 8 encounters', () => {
   let s = started()
   for (let i = 0; i < 7; i++) {
-    s = gameReducer(playEncounter(s, true), { type: 'NEXT_ENCOUNTER' })
+    s = gameReducer(playEncounter(s, true), { type: 'NEXT_ENCOUNTER', now: T0 + 10000 })
     assert.equal(s.phase, 'PHONE_IDLE')
   }
-  s = gameReducer(playEncounter(s, true), { type: 'NEXT_ENCOUNTER' })
-  assert.equal(s.phase, 'FINAL_REVEAL')
-  s = gameReducer(s, { type: 'SHOW_RESULTS', now: T0 + 999_999 })
+  s = gameReducer(playEncounter(s, true), { type: 'NEXT_ENCOUNTER', now: T0 + 999_999 })
   assert.equal(s.phase, 'RESULTS')
+  assert.equal(s.runFinishedAt, T0 + 999_999)
 })
 
 test('a perfect fast run scores 800 base plus full bonuses', () => {
@@ -202,7 +223,7 @@ test('a perfect fast run scores 800 base plus full bonuses', () => {
 
 test('wrong answers never stop the run, and apply soft consequences', () => {
   const s = playWholeRun(started(3), Array(8).fill(false))
-  assert.equal(s.phase, 'FINAL_REVEAL')
+  assert.equal(s.phase, 'RESULTS')
   assert.equal(s.completedEncounters.length, 8)
   assert.ok(s.consequences.length > 0)
   assert.ok(s.playerScore <= 8 * 10, 'only clue bonuses can be earned when every answer is wrong')
@@ -231,19 +252,6 @@ test('survival ratings match GDD 9.3', () => {
   expected.forEach((rating, correct) => assert.equal(survivalRating(correct), rating))
 })
 
-test('BC-07 clues unlock from their required artifacts, in any order', () => {
-  for (let seed = 1; seed <= 20; seed++) {
-    const s = playWholeRun(started(seed), Array(8).fill(true))
-    assert.equal(s.blackoutClues.length, 8, 'one clue per encounter once all evidence is inspected')
-  }
-  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
-  const encounter = currentEncounter(s)!
-  s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: encounter.clue.requires[0] })
-  if (encounter.clue.requires.length > 1) assert.equal(s.blackoutClues.length, 0)
-  for (const id of encounter.clue.requires) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: id })
-  assert.deepEqual(s.blackoutClues, [encounter.clue.id])
-})
-
 test('artifacts from another encounter cannot be inspected', () => {
   const s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
   const other = CHARACTERS[0].encounters.find(e => e.id !== currentEncounter(s)!.id)!
@@ -270,7 +278,7 @@ test('save and restore: a refresh gives back the exact same state', () => {
   }
   let s = started(11)
   s = playEncounter(s, true)
-  s = run(s, { type: 'NEXT_ENCOUNTER' }, { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
+  s = run(s, { type: 'NEXT_ENCOUNTER', now: T0 + 20000 }, { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
   saveGame(s, storage)
   assert.deepEqual(loadGame(storage), s)
 })
@@ -293,7 +301,6 @@ test('refresh restores feedback and results phases without restarting', () => {
   assert.equal(restoredFeedback.decisionHistory[0].correct, true)
 
   let results = playWholeRun(started(19), Array(8).fill(true))
-  results = run(results, { type: 'SHOW_RESULTS', now: T0 + 500_000 })
   saveGame(results, storage)
   const restoredResults = loadGame(storage)
   assert.equal(restoredResults.phase, 'RESULTS')
@@ -309,13 +316,12 @@ test('a broken or outdated save starts fresh instead of crashing', () => {
 
 test('play again starts a clean run that inherits nothing', () => {
   let s = playWholeRun(started(5), [true, false, true, false, true, false, true, false])
-  s = run(s, { type: 'SHOW_RESULTS', now: T0 + 500_000 }, { type: 'PLAY_AGAIN', seed: 99, now: T0 + 600_000 })
+  s = run(s, { type: 'PLAY_AGAIN', seed: 99, now: T0 + 600_000 })
   assert.equal(s.phase, 'CHARACTER_ASSIGNMENT')
   assert.equal(s.seed, 99)
   assert.deepEqual(s.decisionHistory, [])
   assert.deepEqual(s.completedEncounters, [])
   assert.deepEqual(s.inspectedArtifacts, [])
-  assert.deepEqual(s.blackoutClues, [])
   assert.equal(s.playerScore, 0)
   assert.equal(s.accountSecurity, 100)
 })

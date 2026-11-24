@@ -15,7 +15,6 @@ const STEPS: { type: GameAction['type']; label: string }[] = [
   { type: 'BACK_TO_INVESTIGATION', label: 'Back' },
   { type: 'CONTINUE', label: 'Continue' },
   { type: 'NEXT_ENCOUNTER', label: 'Next' },
-  { type: 'SHOW_RESULTS', label: 'Results' },
 ]
 
 export function EnginePanel({ game }: { game: Game }) {
@@ -33,7 +32,6 @@ export function EnginePanel({ game }: { game: Game }) {
       case 'BACK_TO_INVESTIGATION': return actions.backToInvestigation()
       case 'CONTINUE': return actions.continue()
       case 'NEXT_ENCOUNTER': return actions.nextEncounter()
-      case 'SHOW_RESULTS': return actions.showResults()
     }
   }
 
@@ -68,7 +66,6 @@ export function EnginePanel({ game }: { game: Game }) {
           <dt>Horror</dt><dd>{game.horrorStage}</dd>
           <dt>Security</dt><dd>{state.accountSecurity}/100</dd>
           <dt>Wallet</dt><dd>₱{state.walletBalance.toLocaleString()}</dd>
-          <dt>BC-07 clues</dt><dd>{state.blackoutClues.length}</dd>
         </dl>
       )}
 

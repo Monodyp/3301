@@ -247,14 +247,6 @@ function App() {
           {game.state.phase === 'CONSEQUENCE' && game.lastDecision && (
             <FeedbackCard game={game} onContinue={continueToNextAttack} />
           )}
-          {game.state.phase === 'FINAL_REVEAL' && (
-            <aside className="outcome-sheet" aria-live="polite">
-              <span>Project 3301</span>
-              <strong>{game.character?.name} survived the campaign</strong>
-              <p>{game.state.blackoutClues.length} of 8 blackout fragments recovered.</p>
-              <button onClick={game.actions.showResults}>View survival result</button>
-            </aside>
-          )}
           {game.state.phase === 'RESULTS' && (
             <ResultsScreen game={game} onPlayAgain={playAgain} />
           )}

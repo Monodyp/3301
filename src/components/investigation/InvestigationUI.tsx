@@ -54,14 +54,6 @@ export function EvidenceTray({ game, openApp }: { game: Game; openApp: (app: App
               ))}
             </div>
           )}
-          {game.state.blackoutClues.length > 0 && (
-            <div className="bc07-fragments">
-              <strong>BC-07 fragments</strong>
-              {game.character?.encounters.filter(item => game.state.blackoutClues.includes(item.clue.id)).map(item => (
-                <p key={item.clue.id}><b>{item.clue.id}</b> — {item.clue.fragment}</p>
-              ))}
-            </div>
-          )}
         </aside>
       )}
     </>
