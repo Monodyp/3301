@@ -52,6 +52,49 @@ test('content: every character passes the integrity checks', () => {
   assert.deepEqual(validateContent(), [])
 })
 
+test('Mika and Rafa each have complete, sequential encounter runs', () => {
+  for (const characterId of ['mika', 'rafa']) {
+    const s = run(initialGameState(), { type: 'START_RUN', seed: 77, now: T0, characterId }, { type: 'ENTER_PHONE' })
+    const character = CHARACTERS.find(c => c.id === characterId)!
+    assert.equal(s.characterId, characterId)
+    assert.deepEqual(
+      s.encounterQueue,
+      character.encounters.map(encounter => encounter.id),
+      `${characterId} should follow authored encounter order`,
+    )
+    const completed = playWholeRun(s, Array(8).fill(true))
+    assert.equal(completed.phase, 'FINAL_REVEAL')
+    assert.equal(completed.completedEncounters.length, 8)
+    assert.equal(completed.blackoutClues.length, 8)
+  }
+})
+
+test('all authored encounters have 2-3 contextual choices', () => {
+  for (const character of CHARACTERS) {
+    for (const encounter of character.encounters) {
+      assert.ok(encounter.choices.length >= 2 && encounter.choices.length <= 3)
+      assert.equal(encounter.choices.filter(choice => choice.isCorrect).length, 1)
+    }
+  }
+})
+
+test('call and advertisement metadata remains attached to the authored encounter', () => {
+  const mika = CHARACTERS.find(character => character.id === 'mika')!
+  const rafa = CHARACTERS.find(character => character.id === 'rafa')!
+  assert.ok(mika.encounters.some(encounter => encounter.advertisement?.encounterId === encounter.id))
+  assert.ok(rafa.encounters.some(encounter => encounter.advertisement?.encounterId === encounter.id))
+  assert.ok(mika.encounters.some(encounter => encounter.incomingCall?.encounterId === encounter.id))
+  assert.ok(rafa.encounters.some(encounter => encounter.incomingCall?.encounterId === encounter.id))
+})
+
+test('optional security tasks are recorded once and survive the run', () => {
+  let s = started()
+  s = gameReducer(s, { type: 'COMPLETE_SECURITY_TASK', taskId: 'verify-sender' })
+  assert.deepEqual(s.completedSecurityTasks, ['verify-sender'])
+  s = gameReducer(s, { type: 'COMPLETE_SECURITY_TASK', taskId: 'verify-sender' })
+  assert.deepEqual(s.completedSecurityTasks, ['verify-sender'])
+})
+
 test('shuffle is repeatable with the same seed and keeps every item', () => {
   const items = [1, 2, 3, 4, 5, 6, 7, 8]
   assert.deepEqual(shuffle(items, createRng(7)), shuffle(items, createRng(7)))
@@ -73,11 +116,11 @@ test('encounter order and choice order vary between runs', () => {
   const orders = new Set<string>()
   const firstChoice = new Set<string>()
   for (let seed = 1; seed <= 50; seed++) {
-    const s = started(seed)
+    const s = run(initialGameState(), { type: 'START_RUN', seed, now: T0, characterId: 'mika' }, { type: 'ENTER_PHONE' })
     orders.add(s.encounterQueue.join())
     firstChoice.add(s.choiceOrder['MK-A1'][0])
   }
-  assert.ok(orders.size > 40, `only ${orders.size} distinct orders in 50 runs`)
+  assert.equal(orders.size, 1, 'the authored encounter sequence must remain stable')
   assert.ok(firstChoice.size >= 3, 'the correct answer is not always in the same position')
 })
 

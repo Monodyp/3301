@@ -122,6 +122,28 @@ export interface Encounter {
   feedback: Feedback
   clue: BlackoutClue
   hints: Hint[]
+  advertisement?: EncounterAdvertisement
+  incomingCall?: EncounterIncomingCall
+}
+
+export interface EncounterAdvertisement {
+  id: string
+  title: string
+  description: string
+  destination: string
+  suspicious: boolean
+  artifactId?: string
+  encounterId: string
+}
+
+export interface EncounterIncomingCall {
+  caller: string
+  context: string
+  content: string
+  voicemail: string
+  callerColor?: string
+  artifactId?: string
+  encounterId: string
 }
 
 // ---------------------------------------------------------------- state
@@ -187,6 +209,7 @@ export interface GameState {
   runStartedAt: number | null
   encounterStartedAt: number | null // when investigation began
   runFinishedAt: number | null
+  completedSecurityTasks: string[]
 }
 
 export type SurvivalRating =

@@ -51,6 +51,7 @@ export function useGame() {
       playAgain: (seed?: number) => send({ type: 'PLAY_AGAIN', seed: seed ?? randomSeed(), now: Date.now() }),
       devJumpTo: (index: number) => send({ type: 'DEV_JUMP_TO_ENCOUNTER', index }),
       devReset: () => send({ type: 'DEV_RESET' }),
+      completeSecurityTask: (taskId: string) => send({ type: 'COMPLETE_SECURITY_TASK', taskId }),
     }),
     [send],
   )

@@ -20,7 +20,7 @@ import { CHARACTERS } from './content/index.ts'
 import { createRng, pick, shuffle } from './random.ts'
 import { scoreDecision } from './scoring.ts'
 
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 export const ENCOUNTERS_PER_RUN = 8
 
 export type GameAction =
@@ -37,6 +37,7 @@ export type GameAction =
   | { type: 'NEXT_ENCOUNTER' } // ENCOUNTER_COMPLETE -> PHONE_IDLE or FINAL_REVEAL
   | { type: 'SHOW_RESULTS'; now: number }
   | { type: 'PLAY_AGAIN'; seed: number; now: number }
+  | { type: 'COMPLETE_SECURITY_TASK'; taskId: string }
   // Dev-panel only:
   | { type: 'DEV_JUMP_TO_ENCOUNTER'; index: number }
   | { type: 'DEV_RESET' }
@@ -44,14 +45,14 @@ export type GameAction =
 // Which actions each phase accepts. Anything else is ignored.
 const ALLOWED: Record<GamePhase, readonly GameAction['type'][]> = {
   MAIN_MENU: ['START_RUN'],
-  CHARACTER_ASSIGNMENT: ['ENTER_PHONE'],
-  PHONE_IDLE: ['TRIGGER_ENCOUNTER'],
-  ENCOUNTER_INTRO: ['BEGIN_INVESTIGATION'],
-  INVESTIGATION: ['INSPECT_ARTIFACT', 'USE_HINT', 'OPEN_DECISION'],
-  DECISION: ['INSPECT_ARTIFACT', 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE'],
-  CONSEQUENCE: ['CONTINUE'],
-  ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER'],
-  FINAL_REVEAL: ['SHOW_RESULTS'],
+  CHARACTER_ASSIGNMENT: ['ENTER_PHONE', 'COMPLETE_SECURITY_TASK'],
+  PHONE_IDLE: ['TRIGGER_ENCOUNTER', 'COMPLETE_SECURITY_TASK'],
+  ENCOUNTER_INTRO: ['BEGIN_INVESTIGATION', 'COMPLETE_SECURITY_TASK'],
+  INVESTIGATION: ['INSPECT_ARTIFACT', 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK'],
+  DECISION: ['INSPECT_ARTIFACT', 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE', 'COMPLETE_SECURITY_TASK'],
+  CONSEQUENCE: ['CONTINUE', 'COMPLETE_SECURITY_TASK'],
+  ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER', 'COMPLETE_SECURITY_TASK'],
+  FINAL_REVEAL: ['SHOW_RESULTS', 'COMPLETE_SECURITY_TASK'],
   RESULTS: ['PLAY_AGAIN'],
 }
 
@@ -80,6 +81,7 @@ export function initialGameState(): GameState {
     runStartedAt: null,
     encounterStartedAt: null,
     runFinishedAt: null,
+    completedSecurityTasks: [],
   }
 }
 
@@ -128,7 +130,9 @@ function newRun(seed: number, now: number, previousCharacterId: string | null, f
   if (pool.length === 0) return null
   const character = pick(pool, rng)
 
-  const encounterQueue = shuffle(character.encounters.map(e => e.id), rng)
+  // Encounter order is authored content, not randomized. Choice order remains
+  // shuffled so the same narrative cannot always expose the correct answer first.
+  const encounterQueue = character.encounters.map(e => e.id)
   const choiceOrder: Record<string, string[]> = {}
   for (const e of character.encounters) {
     choiceOrder[e.id] = shuffle(e.choices.map(c => c.id), rng)
@@ -226,6 +230,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'DEV_RESET':
       return initialGameState()
+    case 'COMPLETE_SECURITY_TASK':
+      if (state.completedSecurityTasks.includes(action.taskId)) return state
+      return { ...state, completedSecurityTasks: [...state.completedSecurityTasks, action.taskId] }
   }
 }
 

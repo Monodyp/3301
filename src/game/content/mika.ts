@@ -34,6 +34,14 @@ export const mika: Character = {
         title: 'New follower: StarWatcher',
         message: "Hey! Just wanted to say I really enjoyed your stream. You're seriously underrated.",
       },
+      advertisement: {
+        id: 'MK-A1-ad',
+        title: 'Verified Growth Tools',
+        description: 'A stream software preview. Check the seller and destination before opening it.',
+        destination: 'growth.example/preview',
+        suspicious: true,
+        encounterId: 'MK-A1',
+      },
       thread: [
         { from: 'them', sender: 'StarWatcher', text: "I've been watching for a while. You deserve a much bigger audience.", time: 'Day 1' },
         { from: 'them', sender: 'StarWatcher', text: "You have a really good personality on stream. It's refreshing.", time: 'Day 1' },
@@ -72,13 +80,6 @@ export const mika: Character = {
           isCorrect: false,
           outcome: 'Her creator account is at serious risk of takeover.',
           consequence: { kind: 'account_compromise', amount: 25, message: 'New sign-in to your creator account from an unknown device.' },
-        },
-        {
-          id: 'MK-A1-c4',
-          text: 'Publicly accuse the person of being a criminal without investigating further.',
-          isCorrect: false,
-          outcome: 'She avoids sharing anything, but makes an accusation she cannot support.',
-          consequence: { kind: 'glitch' },
         },
       ],
       feedback: {
@@ -153,13 +154,6 @@ export const mika: Character = {
           outcome: 'She reinforces the harmful behavior.',
           consequence: { kind: 'antagonist', message: 'INFLUENCE PROFILE UPDATED.' },
         },
-        {
-          id: 'MK-A2-c4',
-          text: 'Publicly challenge every member and try to provoke a confrontation.',
-          isCorrect: false,
-          outcome: 'The conflict could escalate and put Mika at needless risk.',
-          consequence: { kind: 'glitch' },
-        },
       ],
       feedback: {
         principle:
@@ -230,13 +224,6 @@ export const mika: Character = {
           outcome: 'She exposes personal information she did not need to share.',
           consequence: { kind: 'antagonist', message: 'BEHAVIORAL PROFILE INDEXED.' },
         },
-        {
-          id: 'MK-A3-c4',
-          text: 'Reject every sponsorship offer from now on.',
-          isCorrect: false,
-          outcome: 'She avoids this risk but never learns to judge real offers.',
-          consequence: { kind: 'none' },
-        },
       ],
       feedback: {
         principle:
@@ -305,13 +292,6 @@ export const mika: Character = {
           outcome: 'She engages with a sender she cannot verify.',
           consequence: { kind: 'pressure', message: 'account-review: Yes, this is official. Verify within 1 hour to avoid suspension.' },
         },
-        {
-          id: 'MK-R1-c4',
-          text: 'Forward the email to friends so they can check it.',
-          isCorrect: false,
-          outcome: 'She spreads the suspicious link to others.',
-          consequence: { kind: 'glitch' },
-        },
       ],
       feedback: {
         principle:
@@ -344,6 +324,14 @@ export const mika: Character = {
         sender: 'Brand Representative',
         title: 'Brand Representative',
         message: 'We want you to promote our new gaming product. ₱15,000 for one sponsored stream.',
+      },
+      advertisement: {
+        id: 'MK-R2-ad',
+        title: 'Gaming Launch Sponsor',
+        description: 'Promote a new product after sending the displayed processing deposit.',
+        destination: 'gaming-sponsor.example/deposit',
+        suspicious: true,
+        encounterId: 'MK-R2',
       },
       thread: [
         { from: 'me', text: "That sounds interesting. What's the compensation?" },
@@ -382,13 +370,6 @@ export const mika: Character = {
           outcome: 'She still accepts a suspicious payment setup.',
           consequence: { kind: 'balance_loss', amount: 500, message: 'Sent ₱500.00. "Thanks! One more fee will be needed."' },
         },
-        {
-          id: 'MK-R2-c4',
-          text: "Give a different person's payment account instead.",
-          isCorrect: false,
-          outcome: 'She passes the risk on to someone else.',
-          consequence: { kind: 'antagonist', message: 'TRUST NETWORK EXPANDED.' },
-        },
       ],
       feedback: {
         principle:
@@ -417,10 +398,18 @@ export const mika: Character = {
       title: "Moderator's Warning",
       lesson: 'Independently verifying unexpected requests from supposedly trusted accounts.',
       trigger: {
-        app: 'messages',
+        app: 'calls',
         sender: 'Moderator (verified community account)',
         title: 'Moderator',
         message: 'Mika, I need your help urgently.',
+      },
+      incomingCall: {
+        caller: 'Moderator',
+        context: 'Verified community account',
+        content: 'Please send the verification code from the account alert. Do not contact the platform.',
+        voicemail: 'Call from Moderator missed. The sender asks for a verification code.',
+        callerColor: '#b69bd6',
+        encounterId: 'MK-R3',
       },
       thread: [
         { from: 'them', sender: 'Moderator', text: 'Our community account is having a security issue.' },
@@ -456,13 +445,6 @@ export const mika: Character = {
           isCorrect: false,
           outcome: 'A hijacked account can easily supply convincing fake details.',
           consequence: { kind: 'pressure', message: "Moderator: It's me, I promise. Remember our stream last week? Now send the code." },
-        },
-        {
-          id: 'MK-R3-c4',
-          text: 'Ignore it and keep using the community as normal.',
-          isCorrect: false,
-          outcome: 'The wider account compromise goes unreported.',
-          consequence: { kind: 'none' },
         },
       ],
       feedback: {
@@ -530,13 +512,6 @@ export const mika: Character = {
           isCorrect: false,
           outcome: 'Her account is at immediate risk.',
           consequence: { kind: 'account_compromise', amount: 30, message: 'Your account email was changed.' },
-        },
-        {
-          id: 'MK-O1-c4',
-          text: 'Reject it, because all management agencies are scams.',
-          isCorrect: false,
-          outcome: 'She avoids the risk but relies on a false generalization.',
-          consequence: { kind: 'none' },
         },
       ],
       feedback: {
@@ -608,13 +583,6 @@ export const mika: Character = {
           isCorrect: false,
           outcome: 'She deliberately weakens her device protection.',
           consequence: { kind: 'glitch' },
-        },
-        {
-          id: 'MK-O2-c4',
-          text: 'Forward the file to another creator to see if it works.',
-          isCorrect: false,
-          outcome: 'She passes the risk on to someone else.',
-          consequence: { kind: 'antagonist', message: 'DEVICE EXPOSURE PATH IDENTIFIED.' },
         },
       ],
       feedback: {

@@ -2,10 +2,12 @@ import {
   MessageCircle, Users, Mail, Globe2, ContactRound, Phone,
   WalletCards, Settings, Camera, Compass,
 } from 'lucide-react'
+import { Radio, ShoppingBag, Wifi, BriefcaseBusiness, Terminal } from 'lucide-react'
 import type { AppId } from '../../types'
 import { AppIcon } from './AppIcon'
+import type { CharacterPhoneData } from '../../data/characterData'
 
-export function HomeScreen({ openApp, unread }: { openApp: (id: AppId) => void; unread: Record<AppId, number> }) {
+export function HomeScreen({ openApp, unread, data }: { openApp: (id: AppId) => void; unread: Record<AppId, number>; data: CharacterPhoneData }) {
   const apps = [
     { id: 'messages' as const, label: 'Messages', icon: MessageCircle, color: 'linear-gradient(145deg,#69b9ed,#4d86ca)' },
     { id: 'social' as const, label: 'Social', icon: Users, color: 'linear-gradient(145deg,#c8b2eb,#8f7eb3)' },
@@ -16,6 +18,13 @@ export function HomeScreen({ openApp, unread }: { openApp: (id: AppId) => void; 
     { id: 'wallet' as const, label: 'Wallet', icon: WalletCards, color: 'linear-gradient(145deg,#d1bd74,#98803f)' },
     { id: 'settings' as const, label: 'Settings', icon: Settings, color: 'linear-gradient(145deg,#9ba0a8,#656a72)' },
   ]
+  const specialized = [
+    { id: 'livestream' as const, label: 'Livestream', icon: Radio, enabled: data.specializedViews.livestream },
+    { id: 'marketplace' as const, label: 'Marketplace', icon: ShoppingBag, enabled: data.specializedViews.marketplace },
+    { id: 'wifi' as const, label: 'Wi-Fi Portal', icon: Wifi, enabled: data.specializedViews.wifi },
+    { id: 'jobs' as const, label: 'Job Board', icon: BriefcaseBusiness, enabled: data.specializedViews.jobs },
+    { id: 'ctf' as const, label: 'CTF', icon: Terminal, enabled: data.specializedViews.ctf },
+  ].filter(app => app.enabled)
 
   return (
     <div className="home-screen">
@@ -29,6 +38,10 @@ export function HomeScreen({ openApp, unread }: { openApp: (id: AppId) => void; 
       <div className="app-grid">
         {apps.map(app => (
           <AppIcon key={app.id} icon={app.icon} label={app.label} color={app.color}
+            badge={unread[app.id]} onClick={() => openApp(app.id)} />
+        ))}
+        {specialized.map(app => (
+          <AppIcon key={app.id} icon={app.icon} label={app.label} color="linear-gradient(145deg,#7b8796,#505a68)"
             badge={unread[app.id]} onClick={() => openApp(app.id)} />
         ))}
       </div>
