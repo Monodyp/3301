@@ -116,3 +116,22 @@ button { color: inherit; cursor: pointer; }
 @media (min-width:431px) and (min-height:700px){.phone-shell{border-radius:28px;border:1px solid #34373d;box-shadow:0 30px 80px rgba(0,0,0,.48)}.phone-shell:before{content:"";position:absolute;top:8px;left:50%;width:60px;height:4px;border-radius:4px;background:#25272b;z-index:35;transform:translateX(-50%)}.status-bar{border-radius:28px 28px 0 0}.nav-bar{border-radius:0 0 28px 28px}}
 @media (max-width:430px){.phone-shell{border:0;border-radius:0}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}.static-overlay{display:none}.glitch-active .glitch-band{animation:none!important;opacity:.55;transform:none}.glitch-active .glitch-static{animation:none!important;opacity:.08}.glitch-active .glitch-event:before{animation:none!important;opacity:.35}.glitch-active .app-content h1,.glitch-active .app-content h2,.glitch-active .app-content strong,.glitch-active .app-icon-label{animation:none!important;text-shadow:1px 0 rgba(255,20,45,.4),-1px 0 rgba(35,90,255,.35)}}
+
+/* Engine test panel (dev only, ?dev=1) */
+.engine-panel{position:fixed;right:12px;top:12px;width:300px;max-height:calc(100vh - 24px);overflow:auto;z-index:100;background:rgba(20,22,26,.97);border:1px solid #3a3d44;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;font-size:11px;color:#d7dae0;box-shadow:0 8px 25px rgba(0,0,0,.4)}
+.engine-panel button,.engine-panel input,.engine-panel select{min-height:28px;border:1px solid #3b3f46;border-radius:6px;background:#292c32;color:inherit;font-size:10px;padding:4px 6px;text-align:left}
+.engine-panel button:disabled{opacity:.35}
+.engine-panel section{display:flex;flex-direction:column;gap:4px;border-top:1px solid #33363d;padding-top:6px}
+.engine-panel h4{margin:0;font-size:11px;color:#aeb4be}
+.engine-head{display:flex;justify-content:space-between;align-items:center}
+.engine-head code{color:#ffcf8a}
+.engine-row{display:flex;gap:4px}
+.engine-row>*{flex:1}
+.engine-wrap{flex-wrap:wrap}
+.engine-wrap>*{flex:0 0 auto}
+.engine-stats{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin:0}
+.engine-stats dt{color:#8d939c}
+.engine-stats dd{margin:0}
+.engine-note{margin:0;color:#b9bec7;line-height:1.35}
+.engine-panel .engine-done{border-color:#4c7a5a;color:#a9dcb6}
+.engine-panel .engine-danger{color:#d68b8b}

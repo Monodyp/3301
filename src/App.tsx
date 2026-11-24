@@ -13,6 +13,8 @@ import { CallsApp } from './components/applications/CallsApp'
 import { WalletApp } from './components/applications/WalletApp'
 import { SettingsApp } from './components/applications/SettingsApp'
 import { useHorrorState } from './hooks/useHorrorState'
+import { useGame } from './game/useGame'
+import { EnginePanel } from './components/developer/EnginePanel'
 
 const initialUnread: Record<AppId, number> = {
   messages: 2, social: 1, email: 2, browser: 0, contacts: 0, calls: 1, wallet: 0, settings: 0,
@@ -26,6 +28,7 @@ function App() {
   const [incomingCall, setIncomingCall] = useState(false)
   const horror = useHorrorState()
   const { setStage } = horror
+  const game = useGame()
   const isDev = new URLSearchParams(window.location.search).get('dev') === '1'
 
   useEffect(() => {
@@ -121,6 +124,7 @@ function App() {
           reset={reset}
         />
       )}
+      {isDev && <EnginePanel game={game} />}
     </div>
   )
 }
