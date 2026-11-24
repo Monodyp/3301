@@ -22,6 +22,7 @@ import {
 import { clearSave, loadGame, saveGame } from './storage.ts'
 import { randomSeed } from './random.ts'
 import { horrorStageFor, resultsByCategory, survivalRating } from './scoring.ts'
+import { formatCompletionTime } from './educational.ts'
 
 export function useGame() {
   const [state, dispatch] = useReducer(gameReducer, undefined, () => loadGame())
@@ -79,6 +80,7 @@ export function deriveGameView(state: GameState) {
     horrorStage: horrorStageFor(state.completedEncounters.length, mistakes),
     categoryResults: resultsByCategory(state.decisionHistory),
     progress: { done: state.completedEncounters.length, total: state.encounterQueue.length },
+    completionTime: formatCompletionTime(state.runStartedAt, state.runFinishedAt),
   }
 }
 

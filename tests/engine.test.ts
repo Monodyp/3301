@@ -18,6 +18,7 @@ import { createRng, shuffle } from '../src/game/random.ts'
 import { clueBonus, horrorStageFor, scoreDecision, survivalRating, timeBonus } from '../src/game/scoring.ts'
 import { loadGame, saveGame } from '../src/game/storage.ts'
 import { ARCHETYPES, type GameState } from '../src/game/types.ts'
+import { EDUCATIONAL_DEBRIEF, feedbackForDecision, formatCompletionTime } from '../src/game/educational.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -76,6 +77,41 @@ test('all authored encounters have 2-3 contextual choices', () => {
       assert.equal(encounter.choices.filter(choice => choice.isCorrect).length, 1)
     }
   }
+})
+
+test('feedback matches the submitted choice and encounter category', () => {
+  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+  const encounter = currentEncounter(s)!
+  const correct = orderedChoices(s).find(choice => choice.isCorrect)!
+  s = gameReducer(s, { type: 'CHOOSE', choiceId: correct.id, now: T0 + 5000 })
+  const decision = s.decisionHistory[s.decisionHistory.length - 1]
+  const feedback = feedbackForDecision(encounter, decision)
+  assert.equal(feedback.result, 'Correct')
+  assert.equal(feedback.category, encounter.category)
+  assert.equal(feedback.principle, encounter.feedback.principle)
+  assert.equal(feedback.recommendedAction, encounter.feedback.recommendedAction)
+  assert.equal(feedback.saferChoice, undefined)
+})
+
+test('incorrect feedback explains the risky selected response and a safer alternative', () => {
+  let s = run(started(), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+  const encounter = currentEncounter(s)!
+  const incorrect = orderedChoices(s).find(choice => !choice.isCorrect)!
+  s = gameReducer(s, { type: 'CHOOSE', choiceId: incorrect.id, now: T0 + 5000 })
+  const decision = s.decisionHistory[s.decisionHistory.length - 1]
+  const feedback = feedbackForDecision(encounter, decision)
+  assert.equal(feedback.result, 'Incorrect')
+  assert.equal(feedback.selectedOutcome, incorrect.outcome)
+  assert.ok(feedback.saferChoice)
+  assert.ok(feedback.recommendedAction.length > 0)
+})
+
+test('completion time and category debrief use actual run state', () => {
+  assert.equal(formatCompletionTime(T0, T0 + 125_000), '2:05')
+  assert.equal(formatCompletionTime(null, null), '0:00')
+  assert.equal(EDUCATIONAL_DEBRIEF.awareness.topic, 'Cybersecurity awareness')
+  assert.equal(EDUCATIONAL_DEBRIEF.responsibility.topic, 'Responsible account and incident response')
+  assert.equal(EDUCATIONAL_DEBRIEF.opportunity.topic, 'Cybersecurity opportunity and professional engagement awareness')
 })
 
 test('call and advertisement metadata remains attached to the authored encounter', () => {
@@ -237,6 +273,31 @@ test('save and restore: a refresh gives back the exact same state', () => {
   s = run(s, { type: 'NEXT_ENCOUNTER' }, { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 })
   saveGame(s, storage)
   assert.deepEqual(loadGame(storage), s)
+})
+
+test('refresh restores feedback and results phases without restarting', () => {
+  const store = new Map<string, string>()
+  const storage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+  }
+
+  let s = run(started(19), { type: 'TRIGGER_ENCOUNTER' }, { type: 'BEGIN_INVESTIGATION', now: T0 }, { type: 'OPEN_DECISION' })
+  const correct = orderedChoices(s).find(choice => choice.isCorrect)!
+  s = gameReducer(s, { type: 'CHOOSE', choiceId: correct.id, now: T0 + 5000 })
+  assert.equal(s.phase, 'CONSEQUENCE')
+  saveGame(s, storage)
+  const restoredFeedback = loadGame(storage)
+  assert.equal(restoredFeedback.phase, 'CONSEQUENCE')
+  assert.equal(restoredFeedback.decisionHistory.length, 1)
+  assert.equal(restoredFeedback.decisionHistory[0].correct, true)
+
+  let results = playWholeRun(started(19), Array(8).fill(true))
+  results = run(results, { type: 'SHOW_RESULTS', now: T0 + 500_000 })
+  saveGame(results, storage)
+  const restoredResults = loadGame(storage)
+  assert.equal(restoredResults.phase, 'RESULTS')
+  assert.equal(restoredResults.completedEncounters.length, 8)
 })
 
 test('a broken or outdated save starts fresh instead of crashing', () => {

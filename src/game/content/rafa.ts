@@ -140,7 +140,7 @@ export const rafa: Character = {
         { id: 'RF-R1-c2', text: 'Type the official lab address, verify the notice in the real dashboard and report the email.', isCorrect: true, outcome: 'Rafa confirms the situation without sharing credentials.', consequence: { kind: 'none' } },
         { id: 'RF-R1-c3', text: 'Reply with the password to prove it is a real emergency.', isCorrect: false, outcome: 'Rafa exposes a privileged credential to the unknown sender.', consequence: { kind: 'pressure', message: 'student-security: Recovery cannot continue until you send the password.' } },
       ],
-      feedback: { principle: 'Unexpected urgent recovery requests should be checked through the official service, never the provided link.', recommendedAction: 'Type or bookmark the official address and review account status there.' },
+      feedback: { principle: 'Unexpected urgent recovery requests should be checked through the official service, never the provided link.', recommendedAction: 'Type or bookmark the official address and review account status there. If credentials or account access are exposed, secure the account and consider reporting through the official PNP ACG channel.' },
       clue: { id: 'RF-R1-PBI-01', group: 'PBI-01', fragment: 'CONTACT GRAPH: STUDENT / LAB CREDENTIAL TARGET PATH', requires: ['RF-R1-ART-01', 'RF-R1-ART-02', 'RF-R1-ART-03'] },
       hints: [
         { afterSeconds: 10, text: 'An urgent email and an unknown domain appeared together.' },
@@ -180,7 +180,7 @@ export const rafa: Character = {
         { id: 'RF-R2-c2', text: 'Decline the personal payment and use the campus office’s verified payment channel.', isCorrect: true, outcome: 'Rafa avoids the advance fee and preserves the real repair process.', consequence: { kind: 'none' } },
         { id: 'RF-R2-c3', text: 'Send a smaller deposit and ask them to refund the rest later.', isCorrect: false, outcome: 'The advance-fee structure remains unsafe.', consequence: { kind: 'balance_loss', amount: 150, message: 'A partial deposit was sent to the unverified account.' } },
       ],
-      feedback: { principle: 'Advance fees and personal payment accounts are common warning signs for refund scams.', recommendedAction: 'Use an official office and official payment process instead of personal accounts.' },
+      feedback: { principle: 'Advance fees and personal payment accounts are common warning signs for refund scams.', recommendedAction: 'Use an official office and official payment process instead of personal accounts. If money is lost, contact the provider and use the official PNP ACG channel when appropriate.' },
       clue: { id: 'RF-R2-PBI-03', group: 'PBI-03', fragment: 'BEHAVIORAL PROFILE: REPAIR / FINANCIAL VULNERABILITY', requires: ['RF-R2-ART-01', 'RF-R2-ART-03'] },
       hints: [
         { afterSeconds: 10, text: 'Why is the refund paid through a personal account?' },
@@ -220,7 +220,7 @@ export const rafa: Character = {
         { id: 'RF-R3-c2', text: 'Do not share the code; verify Ben through a known number and alert the coordinator.', isCorrect: true, outcome: 'Rafa prevents a compromised identity from gaining lab access.', consequence: { kind: 'none' } },
         { id: 'RF-R3-c3', text: 'Reply by asking for Ben’s password instead.', isCorrect: false, outcome: 'Rafa becomes part of an unsafe credential exchange.', consequence: { kind: 'pressure', message: 'Ben: I told you not to ask questions.' } },
       ],
-      feedback: { principle: 'Familiar names and writing can be used after an account is compromised. Verify through a separate trusted channel.', recommendedAction: 'Do not share codes from an unfamiliar request; contact the known person or coordinator directly.' },
+      feedback: { principle: 'Familiar names and writing can be used after an account is compromised. Verify through a separate trusted channel.', recommendedAction: 'Do not share codes from an unfamiliar request; contact the known person or coordinator directly. Secure the account and preserve evidence if a compromise is confirmed.' },
       clue: { id: 'RF-R3-PBI-02', group: 'PBI-02', fragment: 'RELATIONSHIP MAP: TRUSTED MENTOR / ACCOUNT COMPROMISE VECTOR', requires: ['RF-R3-ART-02', 'RF-R3-ART-03'] },
       hints: [
         { afterSeconds: 10, text: 'Why does Ben reject the usual coordinator channel?' },

@@ -296,7 +296,7 @@ export const mika: Character = {
       feedback: {
         principle:
           "Never trust an email because it looks official. Check account warnings in the service's own app or website, and never enter passwords or codes through a link in an unexpected message.",
-        recommendedAction: 'Go to the official app or type the address yourself to check your account.',
+        recommendedAction: 'Go to the official app or type the address yourself to check your account. If the theft is confirmed, preserve the message and use the official PNP Anti-Cybercrime Group reporting channel through an official source.',
       },
       clue: {
         id: 'MK-R1-PBI-01',
@@ -374,7 +374,7 @@ export const mika: Character = {
       feedback: {
         principle:
           'Be suspicious when a sponsor, employer or client asks you to pay first in order to get paid. Verify the organization and the payment arrangement yourself.',
-        recommendedAction: 'Never pay a "deposit" to receive money. Verify the company and keep the messages.',
+        recommendedAction: 'Never pay a "deposit" to receive money. Verify the company and keep the messages. If money is lost or fraud is confirmed, contact the financial provider and use the official PNP ACG channel when appropriate.',
       },
       clue: {
         id: 'MK-R2-PBI-03',
@@ -450,7 +450,7 @@ export const mika: Character = {
       feedback: {
         principle:
           'A familiar account is not proof that the real person is using it. Hijacked accounts send convincing messages through existing relationships. Never share passwords or one-time codes.',
-        recommendedAction: 'Check unusual requests through a separate channel you already trust.',
+        recommendedAction: 'Check unusual requests through a separate channel you already trust. Secure the account and, if the compromise is confirmed, preserve evidence and use the official PNP ACG reporting channel.',
       },
       clue: {
         id: 'MK-R3-PBI-02',

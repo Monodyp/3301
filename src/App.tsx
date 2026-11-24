@@ -18,6 +18,7 @@ import { EnginePanel } from './components/developer/EnginePanel'
 import { getCharacterPhoneData } from './data/characterData'
 import { ArtifactLayer, DecisionSheet, EvidenceTray, InvestigationHints } from './components/investigation/InvestigationUI'
 import { SpecializedApp } from './components/applications/SpecializedApp'
+import { FeedbackCard, ResultsScreen } from './components/results/Priority4Cards'
 
 const initialUnread: Record<AppId, number> = {
   messages: 2, social: 1, email: 2, browser: 0, contacts: 0, calls: 1, wallet: 0, settings: 0,
@@ -43,6 +44,18 @@ function App() {
   useEffect(() => {
     setStage(game.horrorStage)
   }, [game.horrorStage, setStage])
+
+  useEffect(() => {
+    if (game.state.phase !== 'MAIN_MENU') {
+      setIntro(false)
+    }
+  }, [game.state.phase])
+
+  useEffect(() => {
+    if (game.character?.id && game.character.id !== selectedCharacter) {
+      setSelectedCharacter(game.character.id)
+    }
+  }, [game.character?.id, selectedCharacter])
 
   useEffect(() => {
     if (isDev) return
@@ -107,6 +120,14 @@ function App() {
   const continueToNextAttack = () => {
     game.actions.continue()
     game.actions.nextEncounter()
+  }
+
+  const playAgain = () => {
+    setOpenedApp(null)
+    setNotification(null)
+    setIncomingCall(false)
+    setUnread(initialUnread)
+    game.actions.playAgain()
   }
 
   const openApp = (id: AppId) => {
@@ -199,6 +220,14 @@ function App() {
           dismissWarning={horror.dismissWarning}
         >
           {openedApp || incomingCall ? renderApp() : <HomeScreen openApp={openApp} unread={unread} data={characterData} />}
+          {game.state.phase === 'CHARACTER_ASSIGNMENT' && (
+            <aside className="character-assignment" role="dialog" aria-label="Character assignment">
+              <span>Character assigned</span>
+              <strong>{characterData.profile.name}</strong>
+              <p>{game.character?.objective}</p>
+              <button onClick={game.actions.enterPhone}>Enter phone</button>
+            </aside>
+          )}
           {['PHONE_IDLE', 'ENCOUNTER_INTRO', 'INVESTIGATION', 'DECISION', 'CONSEQUENCE', 'ENCOUNTER_COMPLETE'].includes(game.state.phase) && (
             <EvidenceTray game={game} openApp={openApp} />
           )}
@@ -216,12 +245,7 @@ function App() {
             </>
           )}
           {game.state.phase === 'CONSEQUENCE' && game.lastDecision && (
-            <aside className="consequence-sheet" aria-live="polite">
-              <strong>{game.lastDecision.correct ? 'Action confirmed' : 'Risk confirmed'}</strong>
-              <p>{game.encounter?.choices.find(choice => choice.id === game.lastDecision?.choiceId)?.outcome}</p>
-              {game.encounter && <p>{game.encounter.feedback.recommendedAction}</p>}
-              <button onClick={continueToNextAttack}>Next attack</button>
-            </aside>
+            <FeedbackCard game={game} onContinue={continueToNextAttack} />
           )}
           {game.state.phase === 'FINAL_REVEAL' && (
             <aside className="outcome-sheet" aria-live="polite">
@@ -232,12 +256,7 @@ function App() {
             </aside>
           )}
           {game.state.phase === 'RESULTS' && (
-            <aside className="outcome-sheet" aria-live="polite">
-              <span>Survival result</span>
-              <strong>{game.rating}</strong>
-              <p>{game.state.playerScore} points · {game.correctCount}/8 secure decisions</p>
-              <button onClick={() => game.actions.playAgain()}>Play again</button>
-            </aside>
+            <ResultsScreen game={game} onPlayAgain={playAgain} />
           )}
           <NotificationManager notification={notification} openApp={openApp} />
         </PhoneShell>
