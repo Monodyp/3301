@@ -121,12 +121,12 @@ export function scenarioProgress(state: GameState, scenario: ScenarioDefinition)
 
 function requirementsMet(state: GameState, scenario: ScenarioDefinition): boolean {
   const progress = scenarioProgress(state, scenario)
-  return progress.actionsComplete && progress.narrativePresented && progress.evidenceFound
+  return progress.actionsComplete && progress.narrativePresented
 }
 
 // ---------------------------------------------------------------- clues
 
-// How long a clue's content must stay on screen, without interruption, to count as discovered.
+// A clue is recorded only after the player has spent more than three uninterrupted seconds on it.
 export const CLUE_DWELL_MS = 3000
 
 // Whether a clue can be discovered right now: it belongs to the active
@@ -145,7 +145,7 @@ export function isDiscoverable(state: GameState, artifactId: string): boolean {
 // When the next clue on screen finishes its dwell time, or null.
 export function nextClueDueAt(state: GameState): number | null {
   const starts = Object.values(state.clueViewing)
-  return starts.length === 0 ? null : Math.min(...starts) + CLUE_DWELL_MS
+  return starts.length === 0 ? null : Math.min(...starts) + CLUE_DWELL_MS + 1
 }
 
 // ---------------------------------------------------------------- decisions
@@ -159,7 +159,6 @@ export type DecisionRejection =
   | 'not-investigating'
   | 'actions-incomplete'
   | 'narrative-not-presented'
-  | 'evidence-missing'
   | 'event-run-actions-required'
 
 export type DecisionCheck = { ok: true; decision: DecisionDefinition } | { ok: false; reason: DecisionRejection }
@@ -190,7 +189,6 @@ export function checkDecision(state: GameState, decisionId: string | null): Deci
   const progress = scenarioProgress(state, scenario)
   if (!progress.actionsComplete) return { ok: false, reason: 'actions-incomplete' }
   if (!progress.narrativePresented) return { ok: false, reason: 'narrative-not-presented' }
-  if (!progress.evidenceFound) return { ok: false, reason: 'evidence-missing' }
   return { ok: true, decision }
 }
 

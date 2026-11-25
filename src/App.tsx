@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppId, GameNotification } from './types'
 import { playGlitchSound, playNotificationOnce, startBackgroundMusic } from './game/audio'
 import { PhoneShell } from './components/phone/PhoneShell'
@@ -14,21 +14,19 @@ import { ContactsApp } from './components/applications/ContactsApp'
 import { CallsApp } from './components/applications/CallsApp'
 import { WalletApp } from './components/applications/WalletApp'
 import { SettingsApp } from './components/applications/SettingsApp'
-import { ProtectiveActionCard } from './components/applications/ProtectiveActionCard'
 import { useHorrorState } from './hooks/useHorrorState'
 import { useGame } from './game/useGame'
 import { useGameEffects } from './game/useGameEffects'
 import { EnginePanel } from './components/developer/EnginePanel'
 import { getCharacterPhoneData } from './data/characterData'
-import { DecisionSheet, EvidenceTray, InvestigationHints, PendingDecisionChip } from './components/investigation/InvestigationUI'
-import { ClueCards } from './components/investigation/ClueCards'
+import { DecisionSheet, InvestigationHints, PendingDecisionChip } from './components/investigation/InvestigationUI'
 import { SpecializedApp } from './components/applications/SpecializedApp'
 import { addVoicemail, loadVoicemails, saveVoicemails } from './components/applications/voicemailStorage'
 import { FeedbackCard, ResultsScreen } from './components/results/Priority4Cards'
 import { JoinSessionScreen } from './components/event/JoinSessionScreen'
 import { hasSupabaseConfiguration, isSupabaseConfigured } from './lib/supabase'
 import { loadStoredParticipant } from './event/participant'
-import type { PhoneSurface } from './game/scenarioRegistry'
+import { useParticipantRunSync } from './event/useParticipantRunSync'
 import { NARRATIVE_CONTENT, hasPresented } from './game/narrative'
 import { OrganizerDashboard } from './components/admin/OrganizerDashboard'
 
@@ -67,6 +65,8 @@ function App() {
   const horror = useHorrorState()
   const { setStage } = horror
   const game = useGame(isEventMode ? 'event' : 'practice')
+  const eventSync = useParticipantRunSync(game.state, isEventMode)
+  const [initialActionFeedback] = useState(() => game.state.resolutionActionFeedback)
   const notify = useCallback((item: GameNotification, playSound = true) => {
     if (playSound) {
       playNotificationOnce(`${game.state.sessionId ?? 'no-session'}:${item.id}`, item.variant === 'attack')
@@ -76,6 +76,12 @@ function App() {
   }, [game.state.sessionId])
   // Idle-based hints and glitches on wrong answers (horror stage and pacing are below).
   useGameEffects(game, horror)
+  const actionFeedback = game.state.resolutionActionFeedback !== initialActionFeedback
+    && game.state.resolutionActionFeedback?.outcome !== 'resolved'
+    ? game.state.resolutionActionFeedback
+    : null
+  const activeScenarioId = game.state.narrative.activeEncounterId
+  const corruptionLevel = activeScenarioId ? game.state.corruptionByScenario[activeScenarioId] ?? 0 : 0
   const isDev = new URLSearchParams(window.location.search).get('dev') === '1'
   const phoneCharacterId = isEventMode
     ? game.encounter?.characterId ?? game.storyCharacter?.id
@@ -109,7 +115,7 @@ function App() {
     const encounter = game.encounter
     const isNewDecision = lastDecisionNotificationId.current !== pendingDecisionId
     lastDecisionNotificationId.current = pendingDecisionId
-    if (!pendingDecisionId || !encounter) return
+    if (isEventMode || !pendingDecisionId || !encounter) return
     notify({
       id: `decision-${pendingDecisionId}`,
       title: 'Decision ready',
@@ -118,7 +124,7 @@ function App() {
       timestamp: 'now',
       decisionId: pendingDecisionId,
     }, isNewDecision)
-  }, [game.encounter, pendingDecisionId, notify])
+  }, [game.encounter, isEventMode, pendingDecisionId, notify])
 
   // The next incident arrives as soon as the engine has unlocked it and the
   // phone is on screen. The engine decides when one is due (first encounter on
@@ -211,9 +217,6 @@ function App() {
     if (item.decisionId) game.actions.openDecision(item.decisionId)
   }
 
-  // Clue cards for an app's main screen or its incident view.
-  const cluesIn = (app: AppId) => (surface: 'incident' | 'app'): ReactNode => <ClueCards game={game} app={app} surface={surface} />
-
   const triggerNotification = () => {
     notify({
       id: `test-${Date.now()}`,
@@ -238,7 +241,6 @@ function App() {
   }
 
   const renderApp = () => {
-    const actionPanel = (surface: PhoneSurface) => <ProtectiveActionCard game={game} surface={surface} />
     if (incomingCall) return <CallsApp key="incoming" incoming data={characterData} encounter={game.encounter} voicemails={voicemails} onPhoneEvent={game.actions.reportPhoneEvent} dismissCall={() => setIncomingCall(false)} onReject={voicemail => {
       const caller = game.encounter?.incomingCall?.caller ?? 'Unknown caller'
       const record = { id: `voicemail-${game.state.sessionId ?? 'local'}-${game.encounter?.id ?? 'call'}`, caller, message: voicemail }
@@ -251,29 +253,28 @@ function App() {
       setUnread(current => ({ ...current, calls: current.calls + 1 }))
     }} />
     switch (openedApp) {
-      case 'messages': return <MessagesApp data={characterData} encounter={game.encounter} onPhoneEvent={game.actions.reportPhoneEvent} clues={cluesIn('messages')} actionPanel={actionPanel('messages')} />
-      case 'social': return <SocialApp data={characterData} encounter={game.encounter} onPhoneEvent={game.actions.reportPhoneEvent} clues={cluesIn('social')} actionPanel={actionPanel('social')} />
-      case 'email': return <EmailApp data={characterData} encounter={game.encounter} onPhoneEvent={game.actions.reportPhoneEvent} clues={cluesIn('email')} actionPanel={actionPanel('email')} />
-      case 'browser': return <BrowserApp data={characterData} encounter={game.encounter} character={game.storyCharacter} completedEncounterIds={game.state.completedEncounters} onPhoneEvent={game.actions.reportPhoneEvent} clues={cluesIn('browser')} actionPanel={actionPanel('browser')} />
-      case 'contacts': return <ContactsApp data={characterData} encounter={game.encounter} clues={cluesIn('contacts')} actionPanel={actionPanel('contacts')} />
+      case 'messages': return <MessagesApp game={game} data={characterData} encounter={game.encounter} onPhoneEvent={game.actions.reportPhoneEvent} />
+      case 'social': return <SocialApp game={game} data={characterData} encounter={game.encounter} onPhoneEvent={game.actions.reportPhoneEvent} />
+      case 'email': return <EmailApp game={game} data={characterData} encounter={game.encounter} onPhoneEvent={game.actions.reportPhoneEvent} />
+      case 'browser': return <BrowserApp game={game} data={characterData} encounter={game.encounter} character={game.storyCharacter} completedEncounterIds={game.state.completedEncounters} onPhoneEvent={game.actions.reportPhoneEvent} />
+      case 'contacts': return <ContactsApp game={game} data={characterData} encounter={game.encounter} />
       case 'calls': return <CallsApp key="recent" data={characterData} encounter={game.encounter} voicemails={voicemails} onPhoneEvent={game.actions.reportPhoneEvent} dismissCall={() => setIncomingCall(false)} />
-      case 'wallet': return <WalletApp data={characterData} balance={game.state.walletBalance} consequences={game.state.consequences} clues={cluesIn('wallet')} actionPanel={actionPanel('wallet')} />
+      case 'wallet': return <WalletApp game={game} data={characterData} balance={game.state.walletBalance} consequences={game.state.consequences} />
       case 'settings': return <SettingsApp
+        game={game}
         data={characterData}
         accountSecurity={game.state.accountSecurity}
         hints={game.hintsShown}
         completedTasks={game.state.completedSecurityTasks}
         onCompleteTask={game.actions.completeSecurityTask}
         securityAlerts={game.securityAlerts}
-        clues={cluesIn('settings')}
-        actionPanel={actionPanel('settings')}
       />
       case 'livestream':
       case 'marketplace':
       case 'wifi':
       case 'jobs':
       case 'ctf':
-        return <SpecializedApp mode={openedApp} data={characterData} onInspect={artifactId => game.actions.inspect(artifactId)} />
+        return <SpecializedApp mode={openedApp} data={characterData} />
       default: return null
     }
   }
@@ -341,11 +342,13 @@ function App() {
       ) : (
         <PhoneShell
           simulatedTime="11:47"
+          playerName={isEventMode ? eventPlayerName : undefined}
           onBack={() => openedApp ? setOpenedApp(null) : undefined}
           onHome={() => { setOpenedApp(null); setIncomingCall(false) }}
           horrorStage={horror.stage}
           glitchActive={horror.glitchActive}
           glitchId={horror.glitchId}
+          corruptionLevel={corruptionLevel}
           warningVisible={horror.warningVisible}
           warningId={horror.warningId}
           dismissWarning={horror.dismissWarning}
@@ -364,13 +367,10 @@ function App() {
               <button onClick={game.actions.enterPhone}>Enter phone</button>
             </aside>
           )}
-          {['PHONE_IDLE', 'ENCOUNTER_INTRO', 'INVESTIGATION', 'DECISION', 'CONSEQUENCE', 'ENCOUNTER_COMPLETE'].includes(game.state.phase) && (
-            <EvidenceTray game={game} openApp={openApp} />
-          )}
           {game.state.phase === 'INVESTIGATION' && (
             <>
               <InvestigationHints game={game} />
-              <PendingDecisionChip game={game} />
+              {!isEventMode && <PendingDecisionChip game={game} />}
             </>
           )}
           {!isEventMode && game.state.phase === 'DECISION' && (
@@ -383,8 +383,22 @@ function App() {
             <FeedbackCard game={game} onContinue={continueToNextAttack} />
           )}
           {game.state.phase === 'RESULTS' && (
-            <ResultsScreen game={game} onPlayAgain={playAgain} playAgainLabel={isEventMode ? 'Return to session' : 'Play again'} />
+            <ResultsScreen
+              game={game}
+              onPlayAgain={playAgain}
+              playAgainLabel={isEventMode ? 'Return to session' : 'Play again'}
+              eventSyncStatus={isEventMode ? eventSync.status : null}
+              eventSyncError={eventSync.error}
+              onRetryEventSync={eventSync.retry}
+            />
           )}
+          {isEventMode && eventSync.status === 'error' && game.state.phase !== 'RESULTS' && (
+            <aside className="event-sync-alert" role="alert">
+              <span>{eventSync.error ?? 'Event progress could not be saved.'}</span>
+              <button type="button" onClick={eventSync.retry}>Retry save</button>
+            </aside>
+          )}
+          {actionFeedback && <div key={`${actionFeedback.scenarioId}:${actionFeedback.actionId}:${actionFeedback.stepId}:${game.state.lastProgressAt}`} className="action-feedback-toast transient-context" role="status">{actionFeedback.message}</div>}
           <NotificationManager
             // A "Decision ready" notification disappears once that decision is no longer pending.
             notifications={notifications.filter(n => !n.decisionId || n.decisionId === game.pendingDecision?.id)}

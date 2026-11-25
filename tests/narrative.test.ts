@@ -102,13 +102,10 @@ test('B. a decision becomes available only after its exact scenario and required
       expectRejected('actions-incomplete', 'before the narrative is taken in')
       state = takeInNarrative(state)
       const keys = encounter.artifacts.filter(a => a.isKeyEvidence)
-      for (const artifact of keys.slice(0, -1)) {
-        expectRejected('evidence-missing', `with ${artifact.id} still to find`)
+      assert.equal(state.narrative.pendingDecisionId, decisionId, 'evidence is optional')
+      for (const artifact of keys) {
         state = gameReducer(state, { type: 'INSPECT_ARTIFACT', artifactId: artifact.id, now: T0 })
       }
-      expectRejected('evidence-missing', 'with one artifact left')
-      state = gameReducer(state, { type: 'INSPECT_ARTIFACT', artifactId: keys[keys.length - 1].id, now: T0 })
-
       assert.equal(state.narrative.pendingDecisionId, decisionId)
       assert.equal(state.narrative.encounterLifecycle[encounter.id], 'DECISION_PENDING')
       state = gameReducer(state, { type: 'OPEN_DECISION', decisionId })
@@ -252,15 +249,15 @@ test('F. call encounters: hearing the call before the call screen opens does not
 test('G. refresh keeps completed actions, never exposes future decisions and never duplicates submissions', () => {
   const storage = memoryStorage()
 
-  // Mid-investigation: progress survives, nothing is pending yet.
+  // Mid-investigation: the decision is ready, and partial evidence survives.
   let state = takeInNarrative(openIncident(gameReducer(startedWith('mika', 44), { type: 'TRIGGER_ENCOUNTER' })))
   state = gameReducer(state, { type: 'INSPECT_ARTIFACT', artifactId: currentEncounter(state)!.artifacts[0].id, now: T0 })
   saveGame(state, storage)
   let restored = loadGame(storage)
   assert.deepEqual(restored, state)
-  assert.equal(restored.narrative.pendingDecisionId, null)
+  assert.equal(restored.narrative.pendingDecisionId, decisionIdFor(currentEncounter(restored)!.id))
 
-  // Finishing after the refresh unlocks the right decision, and an open sheet is restored as open.
+  // Finishing optional evidence preserves the right decision, and an open sheet is restored as open.
   restored = openPending(findEvidence(restored))
   assert.equal(restored.phase, 'DECISION')
   saveGame(restored, storage)

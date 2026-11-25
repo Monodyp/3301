@@ -18,12 +18,16 @@ export const EVENT_SAVE_KEY = '3301.event-run'
 
 export type RunStorageMode = 'practice' | 'event'
 
-type LegacyPracticeSave = Omit<GameState, 'saveVersion' | 'runMode' | 'eventRunId' | 'resolutionSteps' | 'resolutionActionFeedback'> & {
+type LegacyPracticeSave = Omit<GameState, 'saveVersion' | 'runMode' | 'eventRunId' | 'resolutionSteps' | 'performedPhoneInteractions' | 'corruptionByScenario' | 'resolutionActionFeedback'> & {
   saveVersion: 3
 }
 
-type LegacyVersion4Save = Omit<GameState, 'saveVersion' | 'resolutionSteps' | 'resolutionActionFeedback'> & {
+type LegacyVersion4Save = Omit<GameState, 'saveVersion' | 'resolutionSteps' | 'performedPhoneInteractions' | 'corruptionByScenario' | 'resolutionActionFeedback'> & {
   saveVersion: 4
+}
+
+type LegacyVersion5Save = Omit<GameState, 'saveVersion' | 'performedPhoneInteractions' | 'corruptionByScenario'> & {
+  saveVersion: 5
 }
 
 type LoadStorage = Pick<Storage, 'getItem'> & Partial<Pick<Storage, 'removeItem'>>
@@ -43,10 +47,21 @@ export function loadGame(
         runMode: 'practice',
         eventRunId: null,
         resolutionSteps: {},
+        performedPhoneInteractions: {},
+        corruptionByScenario: {},
         resolutionActionFeedback: null,
       }
+    } else if (isLegacyVersion5Save(parsed)) {
+      parsed = { ...parsed, saveVersion: SAVE_VERSION, performedPhoneInteractions: {}, corruptionByScenario: {} }
     } else if (isLegacyVersion4Save(parsed)) {
-      parsed = { ...parsed, saveVersion: SAVE_VERSION, resolutionSteps: {}, resolutionActionFeedback: null }
+      parsed = {
+        ...parsed,
+        saveVersion: SAVE_VERSION,
+        resolutionSteps: {},
+        performedPhoneInteractions: {},
+        corruptionByScenario: {},
+        resolutionActionFeedback: null,
+      }
     }
     if (!isUsableSave(parsed) || parsed.runMode !== mode) {
       discardSave(storage, mode)
@@ -118,6 +133,14 @@ function isLegacyVersion4Save(value: unknown): value is LegacyVersion4Save {
     && save.resolutionActionFeedback === undefined
 }
 
+function isLegacyVersion5Save(value: unknown): value is LegacyVersion5Save {
+  if (!isRecord(value)) return false
+  const save = value as Partial<GameState> & { saveVersion?: unknown }
+  return save.saveVersion === 5
+    && save.performedPhoneInteractions === undefined
+    && save.corruptionByScenario === undefined
+}
+
 // Invalid or obsolete saves are discarded rather than treated as assignments.
 function isUsableSave(value: unknown): value is GameState {
   if (!isRecord(value)) return false
@@ -128,6 +151,8 @@ function isUsableSave(value: unknown): value is GameState {
   if (!isStringArray(save.encounterQueue) || new Set(save.encounterQueue).size !== save.encounterQueue.length) return false
   if (!isNarrativeState(save.narrative)) return false
   if (!isResolutionSteps(save.resolutionSteps, save.encounterQueue)) return false
+  if (!isPhoneInteractionProgress(save.performedPhoneInteractions, save.encounterQueue)) return false
+  if (!isCorruptionProgress(save.corruptionByScenario, save.encounterQueue)) return false
   if (!isResolutionActionFeedback(save.resolutionActionFeedback)) return false
 
   if (save.runMode === 'practice') {
@@ -165,10 +190,39 @@ function isResolutionSteps(value: unknown, encounterQueue: readonly string[]): v
   })
 }
 
+function isPhoneInteractionProgress(value: unknown, encounterQueue: readonly string[]): value is Record<string, string[]> {
+  if (!isRecord(value)) return false
+  return Object.entries(value).every(([scenarioId, completed]) => {
+    if (!isScenarioId(scenarioId) || !encounterQueue.includes(scenarioId) || !isStringArray(completed)) return false
+    const entry = getScenarioDefinition(scenarioId)
+    if (!entry || completed.length > entry.action.interactions.length) return false
+    const ids = new Set(entry.action.interactions.map(interaction => interaction.id))
+    return completed.every(id => ids.has(id)) && new Set(completed).size === completed.length
+  })
+}
+
+function isCorruptionProgress(value: unknown, encounterQueue: readonly string[]): value is Record<string, number> {
+  if (!isRecord(value)) return false
+  return Object.entries(value).every(([scenarioId, level]) =>
+    isScenarioId(scenarioId)
+    && encounterQueue.includes(scenarioId)
+    && typeof level === 'number'
+    && Number.isInteger(level)
+    && level >= 0
+    && level <= 4,
+  )
+}
+
 function isResolutionActionFeedback(value: unknown): boolean {
   if (value === null) return true
   if (!isRecord(value) || typeof value.scenarioId !== 'string' || !isScenarioId(value.scenarioId)) return false
   if (typeof value.actionId !== 'string' || typeof value.stepId !== 'string' || typeof value.message !== 'string') return false
+  if (value.corruptionLevel !== undefined && (
+    typeof value.corruptionLevel !== 'number'
+    || !Number.isInteger(value.corruptionLevel)
+    || value.corruptionLevel < 0
+    || value.corruptionLevel > 4
+  )) return false
   if (value.outcome !== 'step-completed' && value.outcome !== 'resolved' && value.outcome !== 'rejected') return false
   const entry = getScenarioDefinition(value.scenarioId)
   return entry?.action.id === value.actionId && entry.action.steps.some(step => step.id === value.stepId)

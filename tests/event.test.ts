@@ -12,6 +12,10 @@ import {
   type StoredParticipant,
 } from '../src/event/participant.ts'
 import { canTransitionSession, isSessionStatus } from '../supabase/functions/_shared/session-rules.ts'
+import { initialGameState } from '../src/game/engine.ts'
+import { getScenarioDefinition } from '../src/game/scenarioRegistry.ts'
+import { participantCompletionTimeMs, participantDecisionRecords, participantRunProgress } from '../src/event/progress.ts'
+import type { GameState } from '../src/game/types.ts'
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>()
@@ -73,4 +77,66 @@ test('event status transition rules allow waiting, active, and completed lifecyc
   assert.equal(canTransitionSession('active', 'completed'), true)
   assert.equal(canTransitionSession('active', 'waiting'), false)
   assert.equal(canTransitionSession('completed', 'active'), false)
+})
+
+test('participant progress preserves assignment order and separates evidence, wrong actions, and resolution', () => {
+  const scenarioIds = ['RF-R3', 'MK-A1', 'RF-O2', 'MK-R2', 'RF-A1']
+  const wrongInteraction = getScenarioDefinition('RF-R3')!.action.interactions.find(item => item.classification === 'incorrect')!
+  const state: GameState = {
+    ...initialGameState(),
+    runMode: 'event',
+    eventRunId: 'run-id',
+    encounterQueue: scenarioIds,
+    currentEncounterIndex: 0,
+    phase: 'INVESTIGATION',
+    inspectedArtifacts: ['RF-R3-ART-01'],
+    performedPhoneInteractions: { 'RF-R3': [wrongInteraction.id] },
+    completedEncounters: [],
+    decisionHistory: [],
+  }
+
+  const progress = participantRunProgress(state)
+  assert.deepEqual(progress.scenarioIds, scenarioIds)
+  assert.equal(progress.scenarios[0]?.state, 'investigating')
+  assert.deepEqual(progress.scenarios[0]?.evidence, ['RF-R3-ART-01'])
+  assert.deepEqual(progress.scenarios[0]?.incorrectActions, [wrongInteraction.id])
+  assert.ok(progress.actions.some(action =>
+    action.scenarioId === 'RF-R3'
+    && action.actionId === wrongInteraction.id
+    && action.actionKind === 'protective_action'
+    && action.correct === false,
+  ))
+  assert.ok(progress.actions.some(action =>
+    action.scenarioId === 'RF-R3'
+    && action.actionId === 'evidence:RF-R3-ART-01'
+    && action.actionKind === 'evidence',
+  ))
+})
+
+test('event result submission records follow backend scenario order and completion time', () => {
+  const scenarioIds = ['RF-R3', 'MK-A1', 'RF-O2', 'MK-R2', 'RF-A1']
+  const decisionHistory = scenarioIds.map(encounterId => ({
+    encounterId,
+    archetype: 'A1' as const,
+    category: 'awareness' as const,
+    choiceId: `${encounterId}-c1`,
+    correct: true,
+    secondsTaken: 12,
+    inspectedKeyEvidence: 3,
+    totalKeyEvidence: 3,
+    hintsUsed: 0,
+    score: { base: 100, timeBonus: 25, clueBonus: 10, total: 135 },
+  }))
+  const state: GameState = {
+    ...initialGameState(),
+    runMode: 'event',
+    eventRunId: 'run-id',
+    encounterQueue: scenarioIds,
+    decisionHistory,
+    runStartedAt: 1000,
+    runFinishedAt: 9000,
+  }
+
+  assert.deepEqual(participantDecisionRecords(state).map(record => record.scenarioId), scenarioIds)
+  assert.equal(participantCompletionTimeMs(state), 8000)
 })

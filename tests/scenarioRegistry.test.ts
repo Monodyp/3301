@@ -2,6 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { CHARACTERS, getEncounter, validateContent } from '../src/game/content/index.ts'
+import { CHARACTER_PHONE_DATA } from '../src/data/characterData.ts'
+import { trustedLocalSearch } from '../src/components/applications/phoneInteractionUtils.ts'
 import {
   BACKEND_SCENARIO_IDS,
   SCENARIO_REGISTRY,
@@ -68,6 +70,62 @@ test('every action uses a supported phone surface and declares its parameters', 
       assert.ok(step.confirmation.length > 0)
     }
   }
+})
+
+test('every scenario has unique native interactions linked to each action step and authored wrong choices', () => {
+  const interactionIds = new Set<string>()
+  for (const entry of SCENARIO_REGISTRY) {
+    const correctInteractions = entry.action.interactions.filter(interaction => interaction.classification === 'correct')
+    const incorrectInteractions = entry.action.interactions.filter(interaction => interaction.classification === 'incorrect')
+
+    assert.equal(correctInteractions.length, entry.action.steps.length, entry.scenarioId)
+    assert.ok(incorrectInteractions.length > 0, entry.scenarioId)
+    for (const step of entry.action.steps) {
+      assert.equal(correctInteractions.filter(interaction => interaction.stepId === step.id).length, 1, `${entry.scenarioId} ${step.id}`)
+    }
+    for (const interaction of entry.action.interactions) {
+      assert.equal(interactionIds.has(interaction.id), false, interaction.id)
+      interactionIds.add(interaction.id)
+      assert.ok(SUPPORTED_PHONE_SURFACES.includes(interaction.surface))
+      if (interaction.classification === 'incorrect') {
+        assert.ok(interaction.wrongChoiceId)
+        assert.ok(entry.encounter.choices.some(choice => choice.id === interaction.wrongChoiceId && !choice.isCorrect))
+        assert.ok(interaction.severity && interaction.severity >= 1 && interaction.severity <= 4)
+      } else if (interaction.control === 'search') {
+        assert.ok(interaction.expectedQuery?.trim(), `${entry.scenarioId} requires a meaningful browser query`)
+      }
+      if (interaction.expectedContact) {
+        assert.ok(
+          CHARACTER_PHONE_DATA[entry.npcIdentity]?.contacts.some(contact => contact.name === interaction.expectedContact),
+          `${entry.scenarioId} requires the trusted contact to exist in the NPC phone`,
+        )
+      }
+    }
+  }
+})
+
+test('search interactions return contextual local outcomes for the seven incomplete scenarios', () => {
+  const incompleteScenarios = ['MK-A1', 'MK-A3', 'MK-R2', 'MK-O1', 'MK-O2', 'RF-A3', 'RF-O1']
+  for (const scenarioId of incompleteScenarios) {
+    const entry = SCENARIO_REGISTRY.find(item => item.scenarioId === scenarioId)!
+    const search = entry.action.interactions.find(item => item.control === 'search' && item.classification === 'correct')
+    assert.ok(search?.expectedQuery, `${scenarioId} has a meaningful trusted-resource search`)
+
+    const outcome = trustedLocalSearch(
+      search.expectedQuery,
+      search.expectedQuery,
+      CHARACTER_PHONE_DATA[entry.npcIdentity]!.profile.location,
+      [],
+      entry.encounter.artifacts,
+    )
+    assert.notEqual(outcome.kind, 'miss', scenarioId)
+    assert.ok(outcome.title.trim(), `${scenarioId} has a result title`)
+    assert.ok(outcome.kind !== 'miss' && outcome.detail.trim(), `${scenarioId} has contextual result details`)
+  }
+
+  const missed = trustedLocalSearch('unrelated phrase', 'agency', 'Northbridge', [], [])
+  assert.equal(missed.kind, 'miss')
+  assert.ok(missed.detail.trim())
 })
 
 test('registry validation detects omitted and duplicate mappings', () => {

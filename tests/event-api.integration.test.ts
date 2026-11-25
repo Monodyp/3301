@@ -105,7 +105,30 @@ test('Supabase event API allocates and persists concurrent participant runs', {
     } | undefined
     assert.deepEqual(reconnectedParticipant?.run, firstRun)
 
-    const progress = { completedScenarioCount: 2, checkpoint: 'investigation' }
+    const firstScenarioId = firstRun.scenarioIds[0]!
+    const progress = {
+      schemaVersion: 1,
+      scenarioIds: firstRun.scenarioIds,
+      currentScenarioId: firstScenarioId,
+      phase: 'INVESTIGATION',
+      completedScenarioCount: 0,
+      totalScore: 0,
+      scenarios: firstRun.scenarioIds.map((scenarioId, index) => ({
+        scenarioId,
+        ordinal: index + 1,
+        state: index === 0 ? 'investigating' : 'assigned',
+        resolutionCorrect: null,
+        evidence: [],
+        incorrectActions: index === 0 ? ['simulated-wrong-action'] : [],
+        scoreImpact: 0,
+      })),
+      actions: [{
+        scenarioId: firstScenarioId,
+        actionId: 'simulated-wrong-action',
+        actionKind: 'protective_action',
+        correct: false,
+      }],
+    }
     const saved = await call('save-progress', {
       sessionId,
       playerId: participants[0]?.id,
@@ -122,6 +145,32 @@ test('Supabase event API allocates and persists concurrent participant runs', {
     const refreshedRun = refreshed.payload.data?.run as { progress?: unknown } | undefined
     assert.ok(refreshedRun)
     assert.deepEqual(refreshedRun.progress, progress)
+
+    const submitted = await call('submit-result', {
+      sessionId,
+      playerId: participants[0]?.id,
+      registrationId: registrations[0],
+      decisionRecords: firstRun.scenarioIds.map(scenarioId => ({
+        scenarioId,
+        correct: true,
+        secondsTaken: 60,
+        inspectedKeyEvidence: 0,
+        totalKeyEvidence: 3,
+        hintsUsed: 0,
+      })),
+      completionTimeMs: 12000,
+    })
+    assert.equal(submitted.response.status, 200, submitted.payload.error)
+    const submittedResult = submitted.payload.data?.result as { incorrect_actions?: number } | undefined
+    assert.equal(submittedResult?.incorrect_actions, 1, 'leaderboard result includes harmful phone actions')
+
+    const completedRunResponse = await call('get-run', {
+      sessionId,
+      playerId: participants[0]?.id,
+      registrationId: registrations[0],
+    })
+    const completedRun = completedRunResponse.payload.data?.run as { status?: string } | undefined
+    assert.equal(completedRun?.status, 'completed')
 
     const malformed = await call('get-run', {
       sessionId: 'invalid',

@@ -35,7 +35,7 @@ test('2–3. scenario requirements and decision prerequisites are unchanged', ()
   }
 })
 
-test('4. the decision unlocks at the same point whether clues are viewed or inspected', () => {
+test('4. clue discovery is once-only and independent of decision availability', () => {
   for (const character of CHARACTERS) {
     const start = run(initialGameState(), { type: 'START_RUN', seed: 4242, now: T0, characterId: character.id }, { type: 'ENTER_PHONE' }, { type: 'TRIGGER_ENCOUNTER' })
     const read = takeInNarrative(openIncident(start))
@@ -43,10 +43,10 @@ test('4. the decision unlocks at the same point whether clues are viewed or insp
 
     const viaInspect = findEvidence(read)
     let viaViewing: GameState = read
-    for (const clue of keys.slice(0, -1)) viaViewing = run(viaViewing, { type: 'CLUE_VISIBLE', artifactId: clue.id, now: T0 }, { type: 'CLUE_TICK', now: T0 + CLUE_DWELL_MS })
-    assert.equal(viaViewing.narrative.pendingDecisionId, null, 'still locked with one clue left')
+    for (const clue of keys.slice(0, -1)) viaViewing = run(viaViewing, { type: 'CLUE_VISIBLE', artifactId: clue.id, now: T0 }, { type: 'CLUE_TICK', now: T0 + CLUE_DWELL_MS + 1 })
+    assert.equal(viaViewing.narrative.pendingDecisionId, viaInspect.narrative.pendingDecisionId, 'clues do not gate the decision')
     const last = keys[keys.length - 1]
-    viaViewing = run(viaViewing, { type: 'CLUE_VISIBLE', artifactId: last.id, now: T0 + CLUE_DWELL_MS }, { type: 'CLUE_TICK', now: T0 + 2 * CLUE_DWELL_MS })
+    viaViewing = run(viaViewing, { type: 'CLUE_VISIBLE', artifactId: last.id, now: T0 + CLUE_DWELL_MS + 1 }, { type: 'CLUE_TICK', now: T0 + 2 * (CLUE_DWELL_MS + 1) })
 
     assert.equal(viaViewing.narrative.pendingDecisionId, viaInspect.narrative.pendingDecisionId)
     assert.deepEqual(viaViewing.narrative.completedActions, viaInspect.narrative.completedActions)

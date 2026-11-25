@@ -2,10 +2,9 @@ import { useState } from 'react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { AppId } from '../../types'
 
-export function SpecializedApp({ mode, data, onInspect }: {
+export function SpecializedApp({ mode, data }: {
   mode: Extract<AppId, 'livestream' | 'marketplace' | 'wifi' | 'jobs' | 'ctf'>
   data: CharacterPhoneData
-  onInspect?: (artifactId: string) => void
 }) {
   const [completed, setCompleted] = useState<string[]>([])
   const mark = (id: string) => setCompleted(current => current.includes(id) ? current : [...current, id])
@@ -18,7 +17,6 @@ export function SpecializedApp({ mode, data, onInspect }: {
         <div className="live-status"><b>{content?.status ?? 'Offline'}</b><span>{content?.viewers ?? 0} viewers</span></div>
         <p>{content?.message ?? 'Manage the stream preview and moderation tools.'}</p>
         <button onClick={() => mark('livestream-preview')}>{completed.includes('livestream-preview') ? 'Preview checked' : 'Check stream preview'}</button>
-        {content?.evidenceId && <button className="specialized-evidence" onClick={() => onInspect?.(content.evidenceId!)}>Inspect evidence</button>}
       </div>
     )
   }
@@ -32,7 +30,6 @@ export function SpecializedApp({ mode, data, onInspect }: {
             <strong>{item.title}</strong><span>{item.detail}</span><small>{completed.includes(item.id) ? 'Checked' : 'Tap to check'}</small>
           </button>
         ))}
-        {content?.evidenceId && <button className="specialized-evidence" onClick={() => onInspect?.(content.evidenceId!)}>Inspect evidence</button>}
       </div>
     )
   }
@@ -44,7 +41,6 @@ export function SpecializedApp({ mode, data, onInspect }: {
         <b className="wifi-network">{content?.network ?? data.settings.wifi}</b>
         <p>{content?.warning ?? 'Never enter real credentials on a public portal preview.'}</p>
         {(content?.fields ?? ['Guest name', 'Practice code']).map(field => <div className="portal-field" key={field}>{field}<span>Practice only</span></div>)}
-        {content?.evidenceId && <button className="specialized-evidence" onClick={() => onInspect?.(content.evidenceId!)}>Inspect evidence</button>}
       </div>
     )
   }
@@ -58,7 +54,6 @@ export function SpecializedApp({ mode, data, onInspect }: {
             <strong>{posting.title}</strong><span>{posting.company}</span>{posting.warning && <small>{posting.warning}</small>}
           </button>
         ))}
-        {content?.evidenceId && <button className="specialized-evidence" onClick={() => onInspect?.(content.evidenceId!)}>Inspect evidence</button>}
       </div>
     )
   }
@@ -74,7 +69,6 @@ export function SpecializedApp({ mode, data, onInspect }: {
           <strong>{challenge.title}</strong><span>{challenge.points} pts</span><small>{completed.includes(challenge.id) ? 'Solved' : 'Solve'}</small>
         </button>
       ))}
-      {content?.evidenceId && <button className="specialized-evidence" onClick={() => onInspect?.(content.evidenceId!)}>Inspect evidence</button>}
     </div>
   )
 }

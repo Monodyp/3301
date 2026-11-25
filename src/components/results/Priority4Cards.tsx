@@ -38,10 +38,13 @@ export function FeedbackCard({ game, onContinue }: { game: Game; onContinue: () 
   )
 }
 
-export function ResultsScreen({ game, onPlayAgain, playAgainLabel = 'Play again' }: {
+export function ResultsScreen({ game, onPlayAgain, playAgainLabel = 'Play again', eventSyncStatus, eventSyncError, onRetryEventSync }: {
   game: Game
   onPlayAgain: () => void
   playAgainLabel?: string
+  eventSyncStatus?: 'idle' | 'saving' | 'saved' | 'error' | null
+  eventSyncError?: string | null
+  onRetryEventSync?: () => void
 }) {
   const categoryResults = game.categoryResults
   return (
@@ -55,6 +58,15 @@ export function ResultsScreen({ game, onPlayAgain, playAgainLabel = 'Play again'
         <div><strong>{game.correctCount}/{game.state.encounterQueue.length}</strong><span>Correct</span></div>
         <div><strong>{game.completionTime}</strong><span>Time</span></div>
       </div>
+      {eventSyncStatus && (
+        <div className={`event-result-sync event-result-sync-${eventSyncStatus}`} role={eventSyncStatus === 'error' ? 'alert' : 'status'}>
+          {eventSyncStatus === 'error'
+            ? <><span>{eventSyncError ?? 'Event results could not be submitted.'}</span><button type="button" onClick={onRetryEventSync}>Retry submission</button></>
+            : eventSyncStatus === 'saved'
+              ? 'Event results submitted.'
+              : 'Submitting event results…'}
+        </div>
+      )}
       <div className="category-results" aria-label="Category results">
         {categoryResults.map(result => (
           <div key={result.category}>

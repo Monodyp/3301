@@ -35,7 +35,7 @@ import {
   type ScenarioId,
 } from './scenarioRegistry.ts'
 import { randomSeed } from './random.ts'
-import { horrorStageFor, resultsByCategory, survivalRating } from './scoring.ts'
+import { eventSurvivalRating, horrorStageFor, resultsByCategory, survivalRating } from './scoring.ts'
 import { formatCompletionTime } from './educational.ts'
 
 export function useGame(storageMode: RunStorageMode = 'practice') {
@@ -73,6 +73,12 @@ export function useGame(storageMode: RunStorageMode = 'practice') {
         stepId: string
         surface: PhoneSurface
       }) => send({ type: 'PERFORM_PROTECTIVE_ACTION', ...options, now: Date.now() }),
+      performPhoneInteraction: (options: {
+        scenarioId: ScenarioId
+        interactionId: string
+        surface: PhoneSurface
+        parameters?: Readonly<Record<string, string>>
+      }) => send({ type: 'PERFORM_PHONE_INTERACTION', ...options, now: Date.now() }),
       enterPhone: () => send({ type: 'ENTER_PHONE' }),
       // Delivers the active encounter's incident. The engine ignores it unless one is due.
       triggerEncounter: () => send({ type: 'TRIGGER_ENCOUNTER' }),
@@ -140,7 +146,7 @@ export function deriveGameView(state: GameState) {
     lastDecision: lastDecision(state),
     hintsShown: encounter ? encounter.hints.slice(0, state.hintsUsed[encounter.id] ?? 0) : [],
     correctCount,
-    rating: survivalRating(correctCount),
+    rating: state.runMode === 'event' ? eventSurvivalRating(correctCount) : survivalRating(correctCount),
     horrorStage: horrorStageFor(state.completedEncounters.length, mistakes),
     categoryResults: resultsByCategory(state.decisionHistory),
     progress: { done: state.completedEncounters.length, total: state.encounterQueue.length },

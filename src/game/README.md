@@ -20,39 +20,30 @@ All run state lives here. Screens read it through `useGame()` and change it only
 ## Phases
 
 ```
+Local practice:
 MAIN_MENU -> CHARACTER_ASSIGNMENT -> PHONE_IDLE -> ENCOUNTER_INTRO -> INVESTIGATION <-> DECISION
           -> CONSEQUENCE -> ENCOUNTER_COMPLETE -> (PHONE_IDLE for the next one | RESULTS after 8)
-RESULTS --Play again--> CHARACTER_ASSIGNMENT (new character, new order)
+Event:
+JOIN_SESSION -> PHONE_IDLE -> ENCOUNTER_INTRO -> INVESTIGATION -> CONSEQUENCE
+             -> ENCOUNTER_COMPLETE -> (PHONE_IDLE for the next one | RESULTS after 5)
 ```
 
-| Phase | Screen should show | Call next |
-| --- | --- | --- |
-| `MAIN_MENU` | Title screen | `actions.startRun()` |
-| `CHARACTER_ASSIGNMENT` | Profile card from `game.character` | `actions.enterPhone()` |
-| `PHONE_IDLE` | Normal phone, free exploration | `actions.triggerEncounter()` when `game.incidentDue` is true (App.tsx does this as soon as the phone is on screen) |
-| `ENCOUNTER_INTRO` | Notification from `game.encounter.trigger` | Nothing directly: the app reports `CONVERSATION_OPENED` when the player opens the incident |
-| `INVESTIGATION` | `game.encounter.thread` and tappable `artifacts` | `actions.reportPhoneEvent(e)`, `actions.inspect(id)`, `actions.useHint()`, `actions.openDecision(game.pendingDecision.id)` |
-| `DECISION` | Decision sheet with `game.choices` (only the pending decision's, already shuffled) | `actions.choose(id, decisionId)` or `actions.closeDecision()` (the decision stays pending) |
-| `CONSEQUENCE` | Outcome, `encounter.feedback`, `game.lastDecision.score` | `actions.continue()` |
-| `ENCOUNTER_COMPLETE` | (short transition) | `actions.nextEncounter()` |
-| `RESULTS` | Score, `game.rating`, `game.categoryResults` | `actions.playAgain()` |
-
-Use `game.can('CHOOSE')` and similar to disable buttons that wouldn't do anything.
+Practice retains its character assignment and decision sheet. Event runs use the backend's ordered five-scenario assignment; Mika and Rafa remain story characters, not player identities. In event investigation, the assigned protective-action control appears only in its associated phone application and dispatches a typed action to the reducer. `CONSEQUENCE`, `ENCOUNTER_COMPLETE`, and `RESULTS` retain the shared result and progression screens.
 
 ## Narrative progression
 
-Each encounter has two scenarios (`content/scenarios.ts`), built from its existing content:
+Each encounter has two narrative scenarios (`content/scenarios.ts`), built from its existing content:
 
 - `<id>-S1` Incident: starts when the trigger notification arrives. Done when the player opens the incident itself (the conversation, email, post or call screen).
-- `<id>-S2` Investigation: done when the player has taken in the narrative (read the thread to the end, or heard the call / played the voicemail) **and** found every key artifact. Then decision `<id>-D1` becomes pending.
+- `<id>-S2` Investigation: practice decisions still require the authored narrative and evidence. Event protective actions are independent of clue collection and do not require completing the legacy decision quiz.
 
 Screens never move the story themselves. They report what the player did with `actions.reportPhoneEvent({ kind, app, target })`, using `PHONE_TARGETS` for the target. The engine ignores any event that is not a required action of the active scenario, so opening an unrelated app or conversation changes nothing.
 
-A decision opens only if `checkDecision()` passes: right character, active encounter, active scenario, all actions done, narrative presented, evidence found, not yet submitted. `OPEN_DECISION` and `CHOOSE` both check it in the reducer. A restored save is re-checked by `reconcileNarrative()`.
+The practice decision opens only if `checkDecision()` passes: right character, active encounter, active scenario, all actions done, narrative presented, evidence found, not yet submitted. `OPEN_DECISION` and `CHOOSE` both check it in the reducer. Event resolution uses the central scenario registry and requires the assigned action's full sequence. A restored save is re-checked by `reconcileNarrative()`.
 
 ### Clue discovery
 
-Each clue (artifact) is shown as a card in its own app: inside the incident view when it describes the incident itself (same app as the trigger), otherwise on that app's main screen (`clueSource()` in `content/scenarios.ts`). A card reports `CLUE_VISIBLE` when at least 60% of it is on screen in a visible tab and `CLUE_HIDDEN` when it leaves (scrolled away, app closed, tab hidden). After `CLUE_DWELL_MS` (3 s) of uninterrupted viewing the engine discovers it; leaving earlier resets the timer, and timers never survive a refresh. Only clues of the active encounter's investigation scenario can be discovered. Tapping a card discovers it at once (optional shortcut); `INSPECT_ARTIFACT` still works. Discovery is the same evidence the decision already required, so requirements are unchanged.
+Clue details are not rendered as evidence cards. The app screen associated with each artifact reports `CLUE_VISIBLE` while that surface remains in view and `CLUE_HIDDEN` when it closes or leaves view. More than `CLUE_DWELL_MS` (3 s) of uninterrupted foreground viewing silently discovers a clue; leaving earlier resets its timer. Only clues belonging to the active encounter can be discovered. Discovered clues persist in the local run save, while unfinished dwell timers restart after refresh. In event runs, clue collection informs the existing score bonus but never gates the protective action.
 
 ### Cyberattacks
 
@@ -78,7 +69,7 @@ Encounters run one at a time in the shuffled queue. The next one unlocks only wh
 
 `useGameEffects` (called once in `App.tsx`) handles these:
 
-- Hints appear by themselves after 10 s with no new evidence, then every 10 s, and stop once all key evidence is found.
+- Hints appear by themselves after 10 s with no new evidence, then every 10 s, and stop once all key evidence is found. Contextual hints and action feedback are transient and fade after five seconds.
 - Wrong answers with a `glitch`, `antagonist` or `account_compromise` consequence glitch the screen. Restoring a save after a refresh doesn't replay them.
 
 Horror stage is handled directly in `App.tsx`. There is no idle timer for encounters: the next incident arrives when the engine unlocks it.
@@ -92,5 +83,5 @@ Horror stage is handled directly in `App.tsx`. There is no idle timer for encoun
 
 ## Testing
 
-- `npm test` runs the tests in `tests/` with Node's built-in test runner (Node 22.18 or newer). `tests/narrative.test.ts` holds the decision-isolation regression tests, `tests/clues.test.ts` automatic discovery, `tests/attacks.test.ts` attack notifications and `tests/gameplay.test.ts` compares order, requirements and content with `tests/fixtures/gameplay-baseline.json`.
+- `npm test` runs the tests in `tests/` with Node's built-in test runner (Node 22.18 or newer). `tests/narrative.test.ts` holds practice decision-isolation regression tests, `tests/clues.test.ts` passive discovery, `tests/engine.test.ts` action resolution and run progress, `tests/attacks.test.ts` attack notifications, and `tests/gameplay.test.ts` compares authored content with `tests/fixtures/gameplay-baseline.json`.
 - `npm run dev`, then open the game with `?dev=1`. The ENGINE panel on the right lets you set a seed, step through phases, perform the active scenario's required actions, inspect evidence, pick answers (the correct one is marked) and jump to any encounter. It goes through the same reducer checks, so it cannot open a decision early.

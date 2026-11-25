@@ -5,21 +5,23 @@ import { NavigationBar } from './NavigationBar'
 import { HorrorOverlay } from '../horror/HorrorOverlay'
 import { playAppTouch } from '../../game/audio'
 
-export function PhoneShell({ children, simulatedTime, onBack, onHome, horrorStage, glitchActive, glitchId, warningVisible, warningId, dismissWarning }: {
+export function PhoneShell({ children, simulatedTime, playerName, onBack, onHome, horrorStage, glitchActive, glitchId, corruptionLevel, warningVisible, warningId, dismissWarning }: {
   children: ReactNode
   simulatedTime: string
+  playerName?: string
   onBack: () => void
   onHome: () => void
   horrorStage: HorrorStage
   glitchActive: boolean
   glitchId: number
+  corruptionLevel: number
   warningVisible: boolean
   warningId: number
   dismissWarning: () => void
 }) {
   return (
     <main
-      className={`phone-shell horror-${horrorStage.toLowerCase()}${glitchActive ? ' glitch-active' : ''}`}
+      className={`phone-shell horror-${horrorStage.toLowerCase()}${glitchActive ? ' glitch-active' : ''}${corruptionLevel > 0 ? ` corruption-level-${corruptionLevel}` : ''}`}
       onClickCapture={event => {
         const target = event.target
         if (target instanceof Element && target.closest('button, a, input, select, textarea, [role="button"]')) {
@@ -27,7 +29,7 @@ export function PhoneShell({ children, simulatedTime, onBack, onHome, horrorStag
         }
       }}
     >
-      <StatusBar simulatedTime={simulatedTime} />
+      <StatusBar simulatedTime={simulatedTime} playerName={playerName} />
       <div className="phone-screen">{children}</div>
       <HorrorOverlay
         stage={horrorStage}

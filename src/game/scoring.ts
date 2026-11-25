@@ -54,6 +54,14 @@ export function survivalRating(correctCount: number): SurvivalRating {
   return 'BLACKED OUT'
 }
 
+export function eventSurvivalRating(correctCount: number): SurvivalRating {
+  if (correctCount >= 5) return 'FULLY SECURED'
+  if (correctCount >= 4) return 'MOSTLY SECURED'
+  if (correctCount >= 3) return 'PARTIALLY COMPROMISED'
+  if (correctCount >= 2) return 'CRITICAL'
+  return 'BLACKED OUT'
+}
+
 export interface CategoryResult {
   category: Category
   correct: number

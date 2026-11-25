@@ -19,11 +19,12 @@ import {
   type GameAction,
 } from '../src/game/engine.ts'
 import { createRng, shuffle } from '../src/game/random.ts'
-import { clueBonus, horrorStageFor, scoreDecision, survivalRating, timeBonus } from '../src/game/scoring.ts'
+import { clueBonus, eventSurvivalRating, horrorStageFor, scoreDecision, survivalRating, timeBonus } from '../src/game/scoring.ts'
 import { EVENT_SAVE_KEY, loadGame, SAVE_KEY, saveGame } from '../src/game/storage.ts'
 import { ARCHETYPES, type GameState } from '../src/game/types.ts'
 import { EDUCATIONAL_DEBRIEF, feedbackForDecision, formatCompletionTime } from '../src/game/educational.ts'
 import { BACKEND_SCENARIO_IDS, getScenarioDefinition, isScenarioId } from '../src/game/scenarioRegistry.ts'
+import { availablePhoneInteractions } from '../src/components/applications/phoneInteractionUtils.ts'
 import { findEvidence, investigateFully, openIncident, openPending, takeInNarrative } from './support/play.ts'
 
 const T0 = 1_700_000_000_000
@@ -69,6 +70,21 @@ function readyEventScenario(state: GameState): GameState {
     next = gameReducer(next, { type: 'REPORT_PHONE_EVENT', event, now: T0 + 2 })
   }
   return next
+}
+
+function openedEventScenario(state: GameState): GameState {
+  const encounter = currentEncounter(state)
+  assert.ok(encounter)
+  let next = gameReducer(state, { type: 'TRIGGER_ENCOUNTER' })
+  return gameReducer(next, {
+    type: 'REPORT_PHONE_EVENT',
+    event: {
+      kind: 'CONVERSATION_OPENED',
+      app: encounter.trigger.app,
+      target: PHONE_TARGETS.incident(encounter.id),
+    },
+    now: T0 + 1,
+  })
 }
 
 function completeEventAction(state: GameState): GameState {
@@ -171,6 +187,147 @@ test('assigned scenarios complete in order and the run stops after five', () => 
   assert.equal(gameReducer(state, { type: 'PLAY_AGAIN', seed: 888, now: T0 + 500_000 }), state)
 })
 
+test('all 16 assigned scenarios resolve through their own registry interactions', () => {
+  for (const scenarioId of BACKEND_SCENARIO_IDS) {
+    const assignment = [scenarioId, ...BACKEND_SCENARIO_IDS.filter(id => id !== scenarioId)].slice(0, EVENT_SCENARIOS_PER_RUN)
+    const entry = getScenarioDefinition(scenarioId)!
+    let state = readyEventScenario(startedEventRun(assignment))
+
+    for (const step of entry.action.steps) {
+      const interaction = entry.action.interactions.find(item => item.classification === 'correct' && item.stepId === step.id)
+      assert.ok(interaction, `${scenarioId} ${step.id} has a native interaction`)
+      const available = availablePhoneInteractions({
+        state,
+        encounter: currentEncounter(state),
+        resolutionAction: entry,
+      }, step.surface)
+      assert.ok(available.some(item => item.id === interaction.id), `${scenarioId} ${interaction.id} is exposed in its native app`)
+      assert.ok(
+        entry.action.interactions
+          .filter(item => item.classification === 'incorrect' && item.surface === step.surface)
+          .every(item => available.some(candidate => candidate.id === item.id)),
+        `${scenarioId} harmful alternatives are available in their native app`,
+      )
+      const parameters = interaction.expectedQuery
+        ? { query: interaction.expectedQuery }
+        : interaction.expectedContact
+          ? { contactName: interaction.expectedContact }
+          : undefined
+      if (interaction.expectedQuery || interaction.expectedContact) {
+        const rejected = gameReducer(state, {
+          type: 'PERFORM_PHONE_INTERACTION',
+          scenarioId,
+          interactionId: interaction.id,
+          surface: interaction.surface,
+          parameters: interaction.expectedQuery ? { query: 'unrelated search' } : { contactName: 'Untrusted contact' },
+          now: T0 + 9,
+        })
+        assert.equal(rejected, state, `${scenarioId} validates required interaction parameters`)
+      }
+      state = gameReducer(state, {
+        type: 'PERFORM_PHONE_INTERACTION',
+        scenarioId,
+        interactionId: interaction.id,
+        surface: interaction.surface,
+        parameters,
+        now: T0 + 10,
+      })
+    }
+
+    assert.ok(state.completedEncounters.includes(scenarioId), `${scenarioId} resolves`)
+    assert.deepEqual(
+      state.performedPhoneInteractions[scenarioId],
+      entry.action.interactions.filter(item => item.classification === 'correct').map(item => item.id),
+    )
+  }
+})
+
+test('harmful native interactions escalate corruption, persist, and cannot resolve another scenario', () => {
+  const scenarioId = 'MK-A1'
+  const assignment = [scenarioId, 'RF-A1', 'MK-R1', 'RF-O2', 'MK-O2']
+  const entry = getScenarioDefinition(scenarioId)!
+  const wrongInteractions = entry.action.interactions.filter(item => item.classification === 'incorrect')
+  const wrongInteraction = wrongInteractions[0]!
+  const secondWrongInteraction = wrongInteractions[1]!
+  const correctInteractions = entry.action.interactions.filter(item => item.classification === 'correct')
+  const correctFirstStep = correctInteractions[0]!
+  const stabilizingInteraction = correctInteractions[1]!
+  let state = readyEventScenario(startedEventRun(assignment))
+
+  const wrongAction = {
+    type: 'PERFORM_PHONE_INTERACTION' as const,
+    scenarioId,
+    interactionId: wrongInteraction.id,
+    surface: wrongInteraction.surface,
+    now: T0 + 20,
+  }
+  state = gameReducer(state, wrongAction)
+  assert.equal(state.phase, 'INVESTIGATION')
+  assert.equal(state.resolutionSteps[scenarioId]?.length ?? 0, 0)
+  assert.equal(state.corruptionByScenario[scenarioId], wrongInteraction.severity)
+  assert.ok(state.consequences.some(item => item.encounterId === scenarioId && item.kind === 'glitch'))
+  assert.equal(gameReducer(state, wrongAction), state, 'the same harmful interaction cannot be applied twice')
+  state = gameReducer(state, {
+    type: 'PERFORM_PHONE_INTERACTION',
+    scenarioId,
+    interactionId: secondWrongInteraction.id,
+    surface: secondWrongInteraction.surface,
+    now: T0 + 25,
+  })
+  assert.equal(state.corruptionByScenario[scenarioId], Math.min(4, (wrongInteraction.severity ?? 0) + (secondWrongInteraction.severity ?? 0)))
+
+  const store = new Map<string, string>()
+  const storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+  }
+  saveGame(state, storage)
+  state = loadGame(storage, 'event')
+  const accumulatedCorruption = Math.min(4, (wrongInteraction.severity ?? 0) + (secondWrongInteraction.severity ?? 0))
+  assert.equal(state.corruptionByScenario[scenarioId], accumulatedCorruption)
+
+  state = gameReducer(state, {
+    type: 'PERFORM_PHONE_INTERACTION',
+    scenarioId,
+    interactionId: correctFirstStep.id,
+    surface: correctFirstStep.surface,
+    now: T0 + 30,
+  })
+  assert.equal(state.corruptionByScenario[scenarioId], accumulatedCorruption, 'a correct but non-stabilizing step does not reduce corruption')
+  state = gameReducer(state, {
+    type: 'PERFORM_PHONE_INTERACTION',
+    scenarioId,
+    interactionId: stabilizingInteraction.id,
+    surface: stabilizingInteraction.surface,
+    now: T0 + 35,
+  })
+  assert.equal(state.corruptionByScenario[scenarioId], 3, 'a correct step stabilizes incrementally rather than clearing corruption')
+
+  for (const step of entry.action.steps.slice(2)) {
+    const interaction = entry.action.interactions.find(item => item.classification === 'correct' && item.stepId === step.id)!
+    state = gameReducer(state, {
+      type: 'PERFORM_PHONE_INTERACTION',
+      scenarioId,
+      interactionId: interaction.id,
+      surface: interaction.surface,
+      parameters: interaction.expectedQuery
+        ? { query: interaction.expectedQuery }
+        : interaction.expectedContact
+          ? { contactName: interaction.expectedContact }
+          : undefined,
+      now: T0 + 40,
+    })
+  }
+  assert.ok(state.completedEncounters.includes(scenarioId))
+  const resolvedState = state
+  state = gameReducer(state, { ...wrongAction, now: T0 + 50 })
+  assert.equal(state, resolvedState, 'resolved incidents ignore later harmful interactions')
+  state = gameReducer(state, { type: 'CONTINUE' })
+  state = gameReducer(state, { type: 'NEXT_ENCOUNTER', now: T0 + 60 })
+  assert.equal(state.corruptionByScenario['RF-A1'] ?? 0, 0, 'corruption does not leak to the next scenario')
+})
+
 test('all 16 scenario actions resolve only their assigned encounter without requiring evidence', () => {
   for (const scenarioId of BACKEND_SCENARIO_IDS) {
     const assignment = [scenarioId, ...BACKEND_SCENARIO_IDS.filter(id => id !== scenarioId).slice(0, 4)]
@@ -187,6 +344,22 @@ test('all 16 scenario actions resolve only their assigned encounter without requ
     assert.ok(resolved.playerScore >= 100, scenarioId)
     assert.equal(resolved.resolutionSteps[scenarioId]?.length, getScenarioDefinition(scenarioId)?.action.steps.length, scenarioId)
   }
+})
+
+test('event actions can resolve before narrative or evidence investigation', () => {
+  const scenarioId = 'MK-A1'
+  const assignment = [scenarioId, ...BACKEND_SCENARIO_IDS.filter(id => id !== scenarioId).slice(0, 4)]
+  const opened = openedEventScenario(startedEventRun(assignment))
+  assert.equal(opened.narrative.activeScenarioId, `${scenarioId}-S2`)
+  assert.deepEqual(opened.inspectedArtifacts, [])
+  assert.equal(opened.narrative.presentedNarrative.length, 1, 'the incident notice is presented when it arrives')
+  assert.equal(opened.narrative.presentedNarrative.includes(`${scenarioId}:thread`), false)
+  assert.deepEqual(opened.narrative.completedActions[`${scenarioId}-S2`] ?? [], [])
+
+  const resolved = completeEventAction(opened)
+  assert.equal(resolved.phase, 'CONSEQUENCE')
+  assert.equal(resolved.decisionHistory[0]?.score.clueBonus, 0)
+  assert.deepEqual(resolved.inspectedArtifacts, [])
 })
 
 test('reading evidence informs event play but never resolves the incident by itself', () => {
@@ -490,7 +663,7 @@ test('valid legacy v3 saves migrate as local practice; invalid legacy saves are 
   store.set(SAVE_KEY, JSON.stringify(legacy))
 
   const migrated = loadGame(storage, 'practice')
-  assert.equal(migrated.saveVersion, 5)
+  assert.equal(migrated.saveVersion, 6)
   assert.equal(migrated.runMode, 'practice')
   assert.deepEqual(migrated.encounterQueue, practice.encounterQueue)
   assert.deepEqual(migrated.resolutionSteps, {})
@@ -516,7 +689,7 @@ test('valid legacy v4 practice and event saves migrate without losing their runs
   store.set(EVENT_SAVE_KEY, JSON.stringify(legacy))
 
   const migrated = loadGame(storage, 'event')
-  assert.equal(migrated.saveVersion, 5)
+  assert.equal(migrated.saveVersion, 6)
   assert.deepEqual(migrated.encounterQueue, EVENT_ASSIGNMENT)
   assert.deepEqual(migrated.resolutionSteps, {})
 
@@ -526,9 +699,29 @@ test('valid legacy v4 practice and event saves migrate without losing their runs
   delete legacyPractice.resolutionActionFeedback
   store.set(SAVE_KEY, JSON.stringify(legacyPractice))
   const migratedPractice = loadGame(storage, 'practice')
-  assert.equal(migratedPractice.saveVersion, 5)
+  assert.equal(migratedPractice.saveVersion, 6)
   assert.deepEqual(migratedPractice.encounterQueue, legacyPractice.encounterQueue)
   assert.equal(migratedPractice.runMode, 'practice')
+})
+
+test('legacy v5 event saves preserve assigned actions while initializing interaction and corruption state', () => {
+  const store = new Map<string, string>()
+  const storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+  }
+  const legacy = JSON.parse(JSON.stringify(startedEventRun())) as Record<string, unknown>
+  legacy.saveVersion = 5
+  delete legacy.performedPhoneInteractions
+  delete legacy.corruptionByScenario
+  store.set(EVENT_SAVE_KEY, JSON.stringify(legacy))
+
+  const migrated = loadGame(storage, 'event')
+  assert.equal(migrated.saveVersion, 6)
+  assert.deepEqual(migrated.encounterQueue, EVENT_ASSIGNMENT)
+  assert.deepEqual(migrated.performedPhoneInteractions, {})
+  assert.deepEqual(migrated.corruptionByScenario, {})
 })
 
 test('illegal transitions are ignored', () => {
@@ -585,6 +778,8 @@ test('scoring: time bonus, clue bonus and hint penalty', () => {
   assert.equal(timeBonus(60, true), 0)
   assert.equal(timeBonus(5, false), 0, 'no time bonus for a wrong answer')
   assert.equal(clueBonus(3, 3, 0), 10)
+  assert.equal(clueBonus(1, 3, 0), 3)
+  assert.equal(clueBonus(2, 3, 0), 7)
   assert.equal(clueBonus(0, 3, 0), 0)
   assert.equal(clueBonus(3, 3, 2), 4)
   assert.equal(clueBonus(1, 3, 3), 0, 'never negative')
@@ -599,6 +794,11 @@ test('scoring: time bonus, clue bonus and hint penalty', () => {
 test('survival ratings match GDD 9.3', () => {
   const expected = ['BLACKED OUT', 'BLACKED OUT', 'CRITICAL', 'CRITICAL', 'PARTIALLY COMPROMISED', 'PARTIALLY COMPROMISED', 'MOSTLY SECURED', 'MOSTLY SECURED', 'FULLY SECURED']
   expected.forEach((rating, correct) => assert.equal(survivalRating(correct), rating))
+})
+
+test('event ratings match the five-scenario organizer thresholds', () => {
+  const expected = ['BLACKED OUT', 'BLACKED OUT', 'CRITICAL', 'PARTIALLY COMPROMISED', 'MOSTLY SECURED', 'FULLY SECURED']
+  expected.forEach((rating, correct) => assert.equal(eventSurvivalRating(correct), rating))
 })
 
 test('artifacts from another encounter cannot be inspected', () => {
@@ -696,7 +896,7 @@ test('hint timer: one hint per 10 s of being stuck, restarting on progress', () 
   assert.equal(nextHintDueAt(s), T0 + 24_000, 'next hint 10 s after the last one')
 
   s = takeInNarrative(s)
-  assert.equal(openPending(s), s, 'the decision stays closed while key evidence is missing')
+  assert.equal(openPending(s).phase, 'DECISION', 'the decision is available while clues remain optional')
   assert.notEqual(nextHintDueAt(s), null, 'so hints keep coming')
 
   for (const a of rest) s = gameReducer(s, { type: 'INSPECT_ARTIFACT', artifactId: a.id, now: T0 + 25_000 })

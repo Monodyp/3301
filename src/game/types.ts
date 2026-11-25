@@ -260,6 +260,7 @@ export interface ResolutionActionFeedback {
   stepId: string
   outcome: 'step-completed' | 'resolved' | 'rejected'
   message: string
+  corruptionLevel?: number
 }
 
 export interface NarrativeState {
@@ -300,6 +301,7 @@ export interface AppliedConsequence {
   kind: ConsequenceKind
   message?: string
   amount?: number
+  severity?: 1 | 2 | 3 | 4
 }
 
 export interface GameState {
@@ -330,6 +332,8 @@ export interface GameState {
   completedSecurityTasks: string[]
   narrative: NarrativeState
   resolutionSteps: Record<string, string[]>
+  performedPhoneInteractions: Record<string, string[]>
+  corruptionByScenario: Record<string, number>
   resolutionActionFeedback: ResolutionActionFeedback | null
   // Clue content currently on screen: artifact id -> when it became visible.
   // Cleared whenever the content leaves the screen, and on refresh.

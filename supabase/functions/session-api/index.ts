@@ -301,6 +301,107 @@ async function saveRunProgress(client: SupabaseClient, body: Record<string, unkn
     throw apiError('invalid_run_progress', 400)
   }
 
+  const progress = body.progress
+  const run = await getParticipantRun(client, body.sessionId, body.playerId)
+  if (!run || !Array.isArray(progress.scenarioIds)
+    || progress.scenarioIds.length !== 5
+    || progress.scenarioIds.some((id, index) => id !== run.scenarioIds[index])) {
+    throw apiError('invalid_run_progress', 400)
+  }
+  if (!Array.isArray(progress.scenarios) || progress.scenarios.length !== 5
+    || !Array.isArray(progress.actions) || progress.actions.length > 500) {
+    throw apiError('invalid_run_progress', 400)
+  }
+
+  const scenarioIds = new Set(run.scenarioIds)
+  const scenarioStates = new Set(['assigned', 'delivered', 'investigating', 'resolved', 'completed'])
+  const actionKinds = new Set(['evidence', 'protective_action', 'incident_resolution', 'scenario_complete'])
+  const scenarioRows = new Map<string, {
+    scenarioId: string
+    ordinal: number
+    state: string
+    resolutionCorrect: boolean | null
+    evidence: string[]
+    incorrectActions: string[]
+    scoreImpact: number
+  }>()
+  for (const [index, raw] of progress.scenarios.entries()) {
+    if (!isRecord(raw)
+      || typeof raw.scenarioId !== 'string'
+      || raw.scenarioId !== run.scenarioIds[index]
+      || raw.ordinal !== index + 1
+      || typeof raw.state !== 'string'
+      || !scenarioStates.has(raw.state)
+      || !(raw.resolutionCorrect === null || typeof raw.resolutionCorrect === 'boolean')
+      || !Array.isArray(raw.evidence)
+      || !raw.evidence.every(id => typeof id === 'string' && id.startsWith(`${raw.scenarioId}-ART-`))
+      || !Array.isArray(raw.incorrectActions)
+      || !raw.incorrectActions.every(id => typeof id === 'string' && id.length <= 120)
+      || typeof raw.scoreImpact !== 'number'
+      || !Number.isInteger(raw.scoreImpact)
+      || raw.scoreImpact < 0
+      || raw.scoreImpact > 135) {
+      throw apiError('invalid_run_progress', 400)
+    }
+    scenarioRows.set(raw.scenarioId, {
+      scenarioId: raw.scenarioId,
+      ordinal: raw.ordinal,
+      state: raw.state,
+      resolutionCorrect: raw.resolutionCorrect,
+      evidence: raw.evidence,
+      incorrectActions: raw.incorrectActions,
+      scoreImpact: raw.scoreImpact,
+    })
+  }
+
+  const actionIds = new Set<string>()
+  const actionRows: Array<{
+    run_id: string
+    scenario_id: string
+    action_id: string
+    action_kind: string
+    correct: boolean | null
+  }> = []
+  for (const raw of progress.actions) {
+    if (!isRecord(raw)
+      || typeof raw.scenarioId !== 'string'
+      || !scenarioIds.has(raw.scenarioId)
+      || typeof raw.actionId !== 'string'
+      || raw.actionId.trim().length === 0
+      || raw.actionId.length > 120
+      || actionIds.has(raw.actionId)
+      || typeof raw.actionKind !== 'string'
+      || !actionKinds.has(raw.actionKind)
+      || !(raw.correct === null || typeof raw.correct === 'boolean')) {
+      throw apiError('invalid_run_progress', 400)
+    }
+    actionIds.add(raw.actionId)
+    actionRows.push({
+      run_id: run.id,
+      scenario_id: raw.scenarioId,
+      action_id: raw.actionId,
+      action_kind: raw.actionKind,
+      correct: raw.correct,
+    })
+  }
+
+  for (const scenario of scenarioRows.values()) {
+    const recordedEvidence = actionRows
+      .filter(action => action.scenario_id === scenario.scenarioId && action.action_kind === 'evidence')
+      .map(action => action.action_id.slice('evidence:'.length))
+    const recordedIncorrectActions = actionRows
+      .filter(action => action.scenario_id === scenario.scenarioId
+        && action.action_kind === 'protective_action'
+        && action.correct === false)
+      .map(action => action.action_id)
+    if (recordedEvidence.length !== scenario.evidence.length
+      || scenario.evidence.some(id => !recordedEvidence.includes(id))
+      || recordedIncorrectActions.length !== scenario.incorrectActions.length
+      || scenario.incorrectActions.some(id => !recordedIncorrectActions.includes(id))) {
+      throw apiError('invalid_run_progress', 400)
+    }
+  }
+
   const { data, error } = await client.rpc('save_event_run_progress', {
     p_session_id: body.sessionId,
     p_player_id: body.playerId,
@@ -308,6 +409,56 @@ async function saveRunProgress(client: SupabaseClient, body: Record<string, unkn
     p_progress: body.progress,
   })
   if (error) throw mapDatabaseError(error.message)
+
+  const { data: existingRows, error: existingError } = await client
+    .from('event_run_scenario_progress')
+    .select('scenario_id,state,resolution_correct,evidence,incorrect_actions,score_impact,delivered_at,started_at,resolved_at,completed_at')
+    .eq('run_id', run.id)
+  if (existingError) throw mapDatabaseError(existingError.message)
+
+  const currentByScenario = new Map((existingRows ?? []).map(row => [row.scenario_id, row]))
+  const stateRank: Record<string, number> = {
+    assigned: 0,
+    delivered: 1,
+    investigating: 2,
+    resolved: 3,
+    completed: 4,
+  }
+  const now = new Date().toISOString()
+  const normalizedProgressRows = [...scenarioRows.values()].map(scenario => {
+    const existing = currentByScenario.get(scenario.scenarioId)
+    const state = existing && stateRank[existing.state] > stateRank[scenario.state]
+      ? existing.state
+      : scenario.state
+    const evidence = [...new Set([...(existing?.evidence ?? []), ...scenario.evidence])]
+    const incorrectActions = [...new Set([...(existing?.incorrect_actions ?? []), ...scenario.incorrectActions])]
+    return {
+      run_id: run.id,
+      scenario_id: scenario.scenarioId,
+      ordinal: scenario.ordinal,
+      state,
+      resolution_correct: existing?.resolution_correct ?? scenario.resolutionCorrect,
+      evidence,
+      incorrect_actions: incorrectActions,
+      score_impact: Math.max(existing?.score_impact ?? 0, scenario.scoreImpact),
+      delivered_at: existing?.delivered_at ?? (state !== 'assigned' ? now : null),
+      started_at: existing?.started_at ?? (['investigating', 'resolved', 'completed'].includes(state) ? now : null),
+      resolved_at: existing?.resolved_at ?? (['resolved', 'completed'].includes(state) ? now : null),
+      completed_at: existing?.completed_at ?? (state === 'completed' ? now : null),
+      updated_at: now,
+    }
+  })
+  const { error: progressWriteError } = await client
+    .from('event_run_scenario_progress')
+    .upsert(normalizedProgressRows, { onConflict: 'run_id,scenario_id' })
+  if (progressWriteError) throw mapDatabaseError(progressWriteError.message)
+
+  if (actionRows.length > 0) {
+    const { error: actionWriteError } = await client
+      .from('event_run_action_records')
+      .upsert(actionRows, { onConflict: 'run_id,action_id', ignoreDuplicates: true })
+    if (actionWriteError) throw mapDatabaseError(actionWriteError.message)
+  }
   return { saved: true, updatedAt: data }
 }
 
@@ -720,7 +871,17 @@ async function submitFiveScenarioResult(client: SupabaseClient, body: Record<str
     p_completion_time_ms: Math.round(body.completionTimeMs),
   })
   if (error) throw mapDatabaseError(error.message)
-  return { result: Array.isArray(data) ? data[0] : data }
+  const submitted = Array.isArray(data) ? data[0] : data
+  if (!isRecord(submitted) || typeof submitted.run_id !== 'string') {
+    throw apiError('database_operation_failed', 500)
+  }
+  const { data: result, error: resultError } = await client
+    .from('event_run_five_scenario_results')
+    .select('*')
+    .eq('run_id', submitted.run_id)
+    .single()
+  if (resultError) throw mapDatabaseError(resultError.message)
+  return { result }
 }
 
 async function handleAction(request: Request, body: Record<string, unknown>) {

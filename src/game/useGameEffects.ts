@@ -1,8 +1,8 @@
 // Engine-driven effects that App.tsx doesn't already handle.
 // Call it once, next to useGame(), where the horror controls are available.
 //
-// - Clues on screen are discovered once they have been viewed for
-//   CLUE_DWELL_MS without a break: this timer fires CLUE_TICK at that moment.
+// - Clues on screen are discovered after more than CLUE_DWELL_MS without a
+//   break: this timer fires CLUE_TICK just beyond that threshold.
 //   The engine re-checks the timing, so a late or early tick is harmless.
 // - Hints appear on their own when the player stalls: 10 s after the last
 //   new evidence or hint, and never once all key evidence is found
@@ -20,7 +20,7 @@ import type { GlitchSoundType } from './audio.ts'
 
 const GLITCH_ON: readonly ConsequenceKind[] = ['glitch', 'antagonist', 'account_compromise']
 
-export function useGameEffects(game: Game, horror: { triggerGlitch: (soundType?: GlitchSoundType, eventId?: string) => void }) {
+export function useGameEffects(game: Game, horror: { triggerGlitch: (soundType?: GlitchSoundType, eventId?: string, corruptionLevel?: number) => void }) {
   const { state, actions, nextHintAt, nextClueAt } = game
   const { triggerGlitch } = horror
 
@@ -31,12 +31,14 @@ export function useGameEffects(game: Game, horror: { triggerGlitch: (soundType?:
     if (count > seenConsequences.current) {
       const latest = state.consequences[count - 1]
       if (GLITCH_ON.includes(latest.kind)) {
-        const soundType = game.horrorStage === 'UNSETTLED' ? 'jittered' : 'subtle'
-        triggerGlitch(soundType, `${state.sessionId ?? 'no-session'}:${count}`)
+        const corruption = state.corruptionByScenario[latest.encounterId] ?? 0
+        const severity = latest.severity ?? 1
+        const soundType = severity >= 4 ? 'heavy' : severity >= 2 || corruption >= 2 ? 'jittered' : 'subtle'
+        triggerGlitch(soundType, `${state.sessionId ?? 'no-session'}:${count}`, corruption)
       }
     }
     seenConsequences.current = count
-  }, [state.consequences, state.sessionId, game.horrorStage, triggerGlitch])
+  }, [state.consequences, state.corruptionByScenario, state.sessionId, triggerGlitch])
 
   // Clue dwell timer.
   useEffect(() => {

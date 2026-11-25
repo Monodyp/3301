@@ -50,12 +50,11 @@ import {
   refreshPendingDecision,
   requiredEncounters,
   resolveEncounter,
-  scenarioProgress,
   submitDecision,
   unlockQueuedEncounter,
 } from './narrative.ts'
 
-export const SAVE_VERSION = 5
+export const SAVE_VERSION = 6
 export const ENCOUNTERS_PER_RUN = 8
 export const EVENT_SCENARIOS_PER_RUN = 5
 
@@ -66,6 +65,14 @@ export type GameAction =
   | { type: 'ENTER_PHONE' }
   | { type: 'TRIGGER_ENCOUNTER' } // deliver the active encounter's incident, if it is due
   | { type: 'REPORT_PHONE_EVENT'; event: PhoneEvent; now: number }
+  | {
+    type: 'PERFORM_PHONE_INTERACTION'
+    scenarioId: ScenarioId
+    interactionId: string
+    surface: PhoneSurface
+    parameters?: Readonly<Record<string, string>>
+    now: number
+  }
   | { type: 'PERFORM_PROTECTIVE_ACTION'; scenarioId: ScenarioId; actionId: ResolutionActionId; stepId: string; surface: PhoneSurface; now: number }
   | { type: 'INSPECT_ARTIFACT'; artifactId: string; now: number } // optional shortcut: discover at once
   // Automatic discovery: a clue's content came on screen / left it. After
@@ -95,7 +102,7 @@ const ALLOWED: Record<GamePhase, readonly GameAction['type'][]> = {
   CHARACTER_ASSIGNMENT: ['ENTER_PHONE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   PHONE_IDLE: ['TRIGGER_ENCOUNTER', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   ENCOUNTER_INTRO: ['REPORT_PHONE_EVENT', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
-  INVESTIGATION: ['REPORT_PHONE_EVENT', 'PERFORM_PROTECTIVE_ACTION', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  INVESTIGATION: ['REPORT_PHONE_EVENT', 'PERFORM_PHONE_INTERACTION', 'PERFORM_PROTECTIVE_ACTION', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   DECISION: ['REPORT_PHONE_EVENT', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   CONSEQUENCE: ['CONTINUE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
@@ -132,6 +139,8 @@ export function initialGameState(): GameState {
     completedSecurityTasks: [],
     narrative: initialNarrativeState(),
     resolutionSteps: {},
+    performedPhoneInteractions: {},
+    corruptionByScenario: {},
     resolutionActionFeedback: null,
     clueViewing: {},
     attacks: initialAttackProgress(),
@@ -324,6 +333,9 @@ function reduce(state: GameState, action: GameAction): GameState {
     case 'PERFORM_PROTECTIVE_ACTION':
       return performProtectiveAction(state, action)
 
+    case 'PERFORM_PHONE_INTERACTION':
+      return performPhoneInteraction(state, action)
+
     case 'INSPECT_ARTIFACT':
       return inspectArtifact(state, action.artifactId, action.now)
 
@@ -463,11 +475,126 @@ function settleClues(state: GameState, now: number): GameState {
   for (const [artifactId, since] of Object.entries(state.clueViewing)) {
     if (!isDiscoverable(next, artifactId)) {
       next = { ...next, clueViewing: without(next.clueViewing, artifactId) }
-    } else if (now - since >= CLUE_DWELL_MS) {
+    } else if (now - since > CLUE_DWELL_MS) {
       next = inspectArtifact(next, artifactId, now)
     }
   }
   return next
+}
+
+function performPhoneInteraction(
+  state: GameState,
+  action: Extract<GameAction, { type: 'PERFORM_PHONE_INTERACTION' }>,
+): GameState {
+  if (state.runMode !== 'event' || state.phase !== 'INVESTIGATION') return state
+  const active = activeScenario(state)
+  const entry = getScenarioDefinition(action.scenarioId)
+  const interaction = entry?.action.interactions.find(item => item.id === action.interactionId && item.surface === action.surface)
+  if (
+    !active
+    || active.encounterId !== action.scenarioId
+    || active.decisionId === null
+    || state.completedEncounters.includes(action.scenarioId)
+    || !entry
+    || !interaction
+  ) return state
+
+  if (
+    (interaction.expectedQuery
+      && !action.parameters?.query?.toLowerCase().includes(interaction.expectedQuery.toLowerCase()))
+    || (interaction.expectedContact && action.parameters?.contactName !== interaction.expectedContact)
+  ) return state
+
+  const completedInteractions = state.performedPhoneInteractions[action.scenarioId] ?? []
+  if (completedInteractions.includes(interaction.id)) return state
+
+  if (interaction.classification === 'correct') {
+    const completedSteps = state.resolutionSteps[action.scenarioId] ?? []
+    const nextStep = entry.action.steps[completedSteps.length]
+    if (!nextStep || interaction.stepId !== nextStep.id) return state
+    const progressed = performProtectiveAction(state, {
+      type: 'PERFORM_PROTECTIVE_ACTION',
+      scenarioId: action.scenarioId,
+      actionId: entry.action.id,
+      stepId: nextStep.id,
+      surface: interaction.surface,
+      now: action.now,
+    })
+    if (progressed === state) return state
+
+    const currentCorruption = state.corruptionByScenario[action.scenarioId] ?? 0
+    const corruptionLevel = interaction.stabilizes ? Math.max(0, currentCorruption - 1) : currentCorruption
+    return {
+      ...progressed,
+      performedPhoneInteractions: {
+        ...progressed.performedPhoneInteractions,
+        [action.scenarioId]: [...completedInteractions, interaction.id],
+      },
+      corruptionByScenario: {
+        ...progressed.corruptionByScenario,
+        [action.scenarioId]: corruptionLevel,
+      },
+      resolutionActionFeedback: progressed.resolutionActionFeedback
+        ? { ...progressed.resolutionActionFeedback, corruptionLevel }
+        : null,
+    }
+  }
+
+  if (!interaction.wrongChoiceId || !interaction.severity) return state
+  const wrongChoice = entry.encounter.choices.find(choice => choice.id === interaction.wrongChoiceId)
+  if (!wrongChoice || wrongChoice.isCorrect) return state
+
+  const currentCorruption = state.corruptionByScenario[action.scenarioId] ?? 0
+  const corruptionLevel = Math.min(4, currentCorruption + interaction.severity)
+  const consequence = wrongChoice.consequence
+  const expectedStep = entry.action.steps[(state.resolutionSteps[action.scenarioId] ?? []).length]
+    ?? entry.action.steps[0]!
+  const nextConsequences: AppliedConsequence[] = [
+    ...state.consequences,
+    {
+      encounterId: action.scenarioId,
+      kind: consequence.kind,
+      amount: consequence.amount,
+      message: consequence.message ?? wrongChoice.outcome,
+      severity: interaction.severity,
+    },
+  ]
+  if (!['glitch', 'antagonist', 'account_compromise'].includes(consequence.kind)) {
+    nextConsequences.push({
+      encounterId: action.scenarioId,
+      kind: 'glitch',
+      message: 'The phone briefly distorts after the unsafe interaction.',
+      severity: interaction.severity,
+    })
+  }
+
+  return {
+    ...state,
+    performedPhoneInteractions: {
+      ...state.performedPhoneInteractions,
+      [action.scenarioId]: [...completedInteractions, interaction.id],
+    },
+    corruptionByScenario: {
+      ...state.corruptionByScenario,
+      [action.scenarioId]: corruptionLevel,
+    },
+    consequences: nextConsequences,
+    walletBalance: consequence.kind === 'balance_loss' && consequence.amount
+      ? Math.max(0, state.walletBalance - consequence.amount)
+      : state.walletBalance,
+    accountSecurity: consequence.kind === 'account_compromise'
+      ? Math.max(0, state.accountSecurity - (consequence.amount ?? 20))
+      : state.accountSecurity,
+    resolutionActionFeedback: {
+      scenarioId: action.scenarioId,
+      actionId: entry.action.id,
+      stepId: expectedStep.id,
+      outcome: 'rejected',
+      message: consequence.message ?? wrongChoice.outcome,
+      corruptionLevel,
+    },
+    lastProgressAt: action.now,
+  }
 }
 
 function choose(state: GameState, choiceId: string, now: number, decisionId: string | null): GameState {
@@ -498,8 +625,6 @@ function performProtectiveAction(
     || !entry
   ) return state
 
-  const progressState = scenarioProgress(state, active)
-  if (!progressState.actionsComplete || !progressState.narrativePresented) return state
   if (entry.action.id !== action.actionId) {
     return rejectProtectiveAction(state, entry.scenarioId, entry.action.id, entry.action.steps[state.resolutionSteps[action.scenarioId]?.length ?? 0])
   }
@@ -561,10 +686,11 @@ function resolveChoice(
   choice: Encounter['choices'][number],
   now: number,
 ): GameState {
+  const scoredState = settleClues(state, now)
   const keyEvidence = encounter.artifacts.filter(a => a.isKeyEvidence)
-  const inspectedKeyEvidence = keyEvidence.filter(a => state.inspectedArtifacts.includes(a.id)).length
-  const hintsUsed = state.hintsUsed[encounter.id] ?? 0
-  const secondsTaken = state.encounterStartedAt === null ? 0 : Math.max(0, (now - state.encounterStartedAt) / 1000)
+  const inspectedKeyEvidence = keyEvidence.filter(a => scoredState.inspectedArtifacts.includes(a.id)).length
+  const hintsUsed = scoredState.hintsUsed[encounter.id] ?? 0
+  const secondsTaken = scoredState.encounterStartedAt === null ? 0 : Math.max(0, (now - scoredState.encounterStartedAt) / 1000)
 
   const score = scoreDecision({
     correct: choice.isCorrect,
@@ -598,12 +724,12 @@ function resolveChoice(
 
   return submitDecision(
     {
-      ...state,
+      ...scoredState,
       phase: 'CONSEQUENCE',
       clueViewing: {},
-      completedEncounters: [...state.completedEncounters, encounter.id],
-      decisionHistory: [...state.decisionHistory, record],
-      playerScore: state.playerScore + score.total,
+      completedEncounters: [...scoredState.completedEncounters, encounter.id],
+      decisionHistory: [...scoredState.decisionHistory, record],
+      playerScore: scoredState.playerScore + score.total,
       walletBalance,
       accountSecurity,
       consequences,

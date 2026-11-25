@@ -3,7 +3,7 @@ export type GlitchSoundType = 'subtle' | 'heavy' | 'jittered'
 type SoundName = 'appTouch' | 'notification' | 'glitch' | 'bgm'
 
 const soundUrls: Record<SoundName, string> = {
-  appTouch: new URL('../assets/sounds/app_touch.mp3', import.meta.url).href,
+  appTouch: new URL('../assets/sounds/app-touch.mp3', import.meta.url).href,
   notification: new URL('../assets/sounds/notif.mp3', import.meta.url).href,
   glitch: new URL('../assets/sounds/heavy_glitch.mp3', import.meta.url).href,
   bgm: new URL('../assets/sounds/bgm.mp3', import.meta.url).href,

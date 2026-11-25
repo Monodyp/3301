@@ -34,7 +34,7 @@ export function useHorrorState() {
     }
   }, [])
 
-  const triggerGlitch = useCallback((soundType: GlitchSoundType = 'subtle', eventId?: string) => {
+  const triggerGlitch = useCallback((soundType: GlitchSoundType = 'subtle', eventId?: string, corruptionLevel = 0) => {
     if (glitchTimer.current !== null) window.clearTimeout(glitchTimer.current)
     setGlitchId(id => id + 1)
     setGlitchActive(true)
@@ -42,7 +42,7 @@ export function useHorrorState() {
     glitchTimer.current = window.setTimeout(() => {
       setGlitchActive(false)
       glitchTimer.current = null
-    }, GLITCH_DURATION_MS)
+    }, GLITCH_DURATION_MS + Math.min(4, corruptionLevel) * 150)
   }, [])
 
   const reset = useCallback(() => {
