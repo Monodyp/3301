@@ -232,6 +232,28 @@
   margin-top: 16px;
 }
 
+.organizer-join-code {
+  color: var(--organizer-text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+}
+
+.organizer-join-code-large {
+  color: var(--organizer-cyan);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 34px;
+  letter-spacing: 0.24em;
+}
+
+.organizer-session-details {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--organizer-line);
+}
+
 .organizer-created-link img {
   width: 220px;
   max-width: 100%;

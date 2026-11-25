@@ -18,6 +18,7 @@ import {
   setAdminSessionStatus,
   type EventSessionStatus,
 } from '../../event/api'
+import { normalizeJoinCode, playerJoinUrl } from '../../event/participant'
 
 type Section = 'overview' | 'sessions' | 'participants' | 'analytics' | 'results'
 
@@ -54,6 +55,7 @@ export function OrganizerDashboard() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [createName, setCreateName] = useState('')
   const [createCapacity, setCreateCapacity] = useState(60)
+  const [createdJoinCode, setCreatedJoinCode] = useState('')
   const [createdLink, setCreatedLink] = useState('')
   const [createdQr, setCreatedQr] = useState('')
 
@@ -139,7 +141,8 @@ export function OrganizerDashboard() {
     try {
       const response = await createAdminSession({ name: createName, maxPlayers: createCapacity })
       const session = response.session
-      const link = `${window.location.origin}/?session=${session.id}`
+      const link = playerJoinUrl(window.location.origin, session.joinCode)
+      setCreatedJoinCode(session.joinCode)
       setCreatedLink(link)
       setCreateName('')
       setNotice(`Session created: ${session.name}`)
@@ -252,6 +255,11 @@ export function OrganizerDashboard() {
   }
 
   const incidentStats = overview?.incidentStats as Record<string, number> | undefined
+  const selectedSession = sessions.find(session => String(session.id) === selectedSessionId)
+  const selectedSessionJoinCode = typeof selectedSession?.join_code === 'string' ? selectedSession.join_code : ''
+  const selectedSessionJoinLink = normalizeJoinCode(selectedSessionJoinCode)
+    ? playerJoinUrl(window.location.origin, selectedSessionJoinCode)
+    : ''
 
   return (
     <main className="organizer-shell">
@@ -320,11 +328,12 @@ export function OrganizerDashboard() {
               {sessions.length === 0 ? <p>No sessions have been created.</p> : (
                 <div className="organizer-table-wrap">
                   <table>
-                    <thead><tr><th>Name</th><th>Status</th><th>Participants</th><th>Created</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Join code</th><th>Status</th><th>Participants</th><th>Created</th></tr></thead>
                     <tbody>
                       {[...sessions].slice(0, 5).map(session => (
                         <tr key={String(session.id)}>
                           <td>{String(session.name)}</td>
+                          <td><strong className="organizer-join-code">{String(session.join_code)}</strong></td>
                           <td><span className={`organizer-status ${String(session.status)}`}>{String(session.status)}</span></td>
                           <td>{String(session.participantCount)} / {String(session.max_players)}</td>
                           <td>{formatDate(session.created_at)}</td>
@@ -351,6 +360,8 @@ export function OrganizerDashboard() {
               </form>
               {createdLink && (
                 <div className="organizer-created-link">
+                  <span>Player join code</span>
+                  <strong className="organizer-join-code-large">{createdJoinCode}</strong>
                   <span>Shareable join link</span>
                   <input readOnly value={createdLink} onFocus={event => event.target.select()} />
                   {createdQr && <img src={createdQr} alt="QR code for player join link" />}
@@ -362,7 +373,7 @@ export function OrganizerDashboard() {
               {sessions.length === 0 ? <p>No sessions have been created.</p> : (
                 <div className="organizer-table-wrap">
                   <table>
-                    <thead><tr><th>Name</th><th>Status</th><th>Participants</th><th>Completed</th><th>Created</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Join code</th><th>Status</th><th>Participants</th><th>Completed</th><th>Created</th><th>Actions</th></tr></thead>
                     <tbody>
                       {sessions.map(session => (
                         <tr key={String(session.id)}>
@@ -370,6 +381,7 @@ export function OrganizerDashboard() {
                             <button className="organizer-link" type="button" onClick={() => void selectSession(String(session.id))}>{String(session.name)}</button>
                             <small>{String(session.id)}</small>
                           </td>
+                          <td><strong className="organizer-join-code">{String(session.join_code)}</strong></td>
                           <td><span className={`organizer-status ${String(session.status)}`}>{String(session.status)}</span></td>
                           <td>{String(session.participantCount)} / {String(session.max_players)}</td>
                           <td>{String(session.completionCount)}</td>
@@ -383,6 +395,20 @@ export function OrganizerDashboard() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {selectedSession && (
+                <div className="organizer-session-details">
+                  <h3>Session details</h3>
+                  <span>Player join code</span>
+                  <strong className="organizer-join-code-large">{selectedSessionJoinCode || 'Unavailable'}</strong>
+                  {selectedSessionJoinLink && (
+                    <>
+                      <label htmlFor="selected-session-join-link">Player join link</label>
+                      <input id="selected-session-join-link" readOnly value={selectedSessionJoinLink} onFocus={event => event.target.select()} />
+                    </>
+                  )}
+                  <small>Internal session ID: {String(selectedSession.id)}</small>
                 </div>
               )}
             </article>

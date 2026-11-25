@@ -1,10 +1,11 @@
 import { supabaseClient } from '../lib/supabase.ts'
-import type { StoredParticipant } from './participant.ts'
+import { normalizeJoinCode, type StoredParticipant } from './participant.ts'
 
 export type EventSessionStatus = 'waiting' | 'active' | 'completed'
 
 export interface EventSessionSummary {
   id: string
+  joinCode: string
   name: string
   status: EventSessionStatus
   playerCount: number
@@ -28,6 +29,12 @@ export interface EventParticipantRun {
 
 const USER_MESSAGES: Record<string, string> = {
   invalid_session_id: 'Enter a valid session ID.',
+  invalid_join_code: 'Enter a valid four-digit session code.',
+  session_code_unavailable: 'That code is invalid or no longer available. Check with your organizer.',
+  join_temporarily_unavailable: 'Too many unsuccessful attempts. Please wait before trying again.',
+  join_rate_limiter_unavailable: 'Joining is temporarily unavailable. Please try again later.',
+  client_ip_unavailable: 'Joining is temporarily unavailable. Please try again later.',
+  join_code_space_exhausted: 'No unused four-digit session codes remain. Contact the system administrator.',
   invalid_registration: 'Enter a nickname between 1 and 32 characters.',
   session_not_found: 'We could not find that event session. Check the ID and try again.',
   session_full: 'This event session is full.',
@@ -106,8 +113,15 @@ export async function lookupEventSession(sessionId: string): Promise<EventSessio
   return response.session
 }
 
+export async function lookupEventSessionByCode(joinCode: string): Promise<EventSessionSummary> {
+  const normalized = normalizeJoinCode(joinCode)
+  if (!normalized) throw new Error(USER_MESSAGES.invalid_join_code)
+  const response = await invoke<{ session: EventSessionSummary }>({ action: 'lookup', joinCode: normalized })
+  return response.session
+}
+
 export async function joinEventSession(input: {
-  sessionId: string
+  joinCode: string
   registrationId: string
   nickname: string
 }): Promise<{
@@ -115,7 +129,9 @@ export async function joinEventSession(input: {
   participant: Omit<EventParticipantSummary, 'run'> & { run: null }
   created: boolean
 }> {
-  return invoke({ action: 'join', ...input })
+  const joinCode = normalizeJoinCode(input.joinCode)
+  if (!joinCode) throw new Error(USER_MESSAGES.invalid_join_code)
+  return invoke({ action: 'join', ...input, joinCode })
 }
 
 export async function refreshEventParticipant(participant: StoredParticipant): Promise<{

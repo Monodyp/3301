@@ -1,5 +1,6 @@
 export interface StoredParticipant {
   sessionId: string
+  joinCode?: string
   registrationId: string
   playerId: string | null
   nickname: string
@@ -15,6 +16,23 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 export function normalizeSessionId(value: string): string | null {
   const normalized = value.trim().toLowerCase()
   return UUID_PATTERN.test(normalized) ? normalized : null
+}
+
+export function normalizeJoinCode(value: string): string | null {
+  const normalized = value.trim()
+  return /^\d{4}$/.test(normalized) ? normalized : null
+}
+
+export function joinCodeFromSearch(search: string): string {
+  return normalizeJoinCode(new URLSearchParams(search).get('code') ?? '') ?? ''
+}
+
+export function playerJoinUrl(origin: string, value: string): string {
+  const joinCode = normalizeJoinCode(value)
+  if (!joinCode) throw new Error('A valid four-digit join code is required.')
+  const url = new URL('/', origin)
+  url.searchParams.set('code', joinCode)
+  return url.toString()
 }
 
 export function normalizeNickname(value: string): string | null {
@@ -74,6 +92,8 @@ function isStoredParticipant(value: unknown): value is StoredParticipant {
   const participant = value as Partial<StoredParticipant>
   return typeof participant.sessionId === 'string'
     && normalizeSessionId(participant.sessionId) !== null
+    && (participant.joinCode === undefined
+      || (typeof participant.joinCode === 'string' && normalizeJoinCode(participant.joinCode) !== null))
     && typeof participant.registrationId === 'string'
     && UUID_PATTERN.test(participant.registrationId)
     && (participant.playerId === null

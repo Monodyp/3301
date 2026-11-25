@@ -3,6 +3,7 @@ import {
   authorizeParticipantStart,
   joinEventSession,
   lookupEventSession,
+  lookupEventSessionByCode,
   refreshEventParticipant,
   type EventParticipantRun,
   type EventParticipantSummary,
@@ -10,9 +11,12 @@ import {
 } from '../../event/api.ts'
 import {
   EVENT_PARTICIPANT_KEY,
+  joinCodeFromSearch,
   loadStoredParticipant,
+  normalizeJoinCode,
   normalizeNickname,
   normalizeSessionId,
+  playerJoinUrl,
   registrationIdForSession,
   saveStoredParticipant,
   type StoredParticipant,
@@ -38,15 +42,41 @@ export function JoinSessionScreen({
   const [saved] = useState(loadStoredParticipant)
   const [participant, setParticipant] = useState<StoredParticipant | null>(() => saved?.playerId ? saved : null)
   const [draft, setDraft] = useState<StoredParticipant | null>(saved)
-  const [sessionId, setSessionId] = useState(
-    saved?.sessionId ?? new URLSearchParams(window.location.search).get('session') ?? '',
-  )
+  const [joinCode, setJoinCode] = useState(() => joinCodeFromSearch(window.location.search) || saved?.joinCode || '')
   const [nickname, setNickname] = useState(saved?.nickname ?? '')
   const [session, setSession] = useState<EventSessionSummary | null>(null)
   const [remoteParticipant, setRemoteParticipant] = useState<EventParticipantSummary | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const legacySessionId = new URLSearchParams(window.location.search).get('session')
+    ?? (saved && !saved.playerId && !saved.joinCode ? saved.sessionId : null)
+
+  useEffect(() => {
+    if (participant || joinCode || !legacySessionId) return
+    const sessionId = normalizeSessionId(legacySessionId)
+    if (!sessionId) return
+    let cancelled = false
+    void lookupEventSession(sessionId).then(legacySession => {
+      if (cancelled) return
+      if (legacySession.status !== 'waiting') {
+        throw new Error(legacySession.status === 'completed'
+          ? 'This event session has ended.'
+          : 'This session is not accepting new participants.')
+      }
+      if (legacySession.playerCount >= legacySession.maxPlayers) {
+        throw new Error('This event session is full.')
+      }
+      setJoinCode(legacySession.joinCode)
+      setSession(legacySession)
+      window.history.replaceState(null, '', playerJoinUrl(window.location.origin, legacySession.joinCode))
+    }).catch(reason => {
+      if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load this session link.')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [joinCode, legacySessionId, participant])
 
   useEffect(() => {
     if (!participant) return
@@ -75,9 +105,9 @@ export function JoinSessionScreen({
     event.preventDefault()
     setError(null)
     setNotice(null)
-    const validSessionId = normalizeSessionId(sessionId)
-    if (!validSessionId) {
-      setError('Enter a valid session ID.')
+    const validJoinCode = normalizeJoinCode(joinCode)
+    if (!validJoinCode) {
+      setError('Enter a valid four-digit session code.')
       return
     }
     const validNickname = normalizeNickname(nickname)
@@ -92,11 +122,12 @@ export function JoinSessionScreen({
 
     setBusy(true)
     try {
-      const registrationId = registrationIdForSession(draft, validSessionId)
-      const preview = await lookupEventSession(validSessionId)
+      const preview = await lookupEventSessionByCode(validJoinCode)
       setSession(preview)
+      const registrationId = registrationIdForSession(draft, preview.id)
       const pending: StoredParticipant = {
-        sessionId: validSessionId,
+        sessionId: preview.id,
+        joinCode: validJoinCode,
         registrationId,
         playerId: null,
         nickname: validNickname,
@@ -107,7 +138,7 @@ export function JoinSessionScreen({
       saveStoredParticipant(pending)
       setDraft(pending)
       const result = await joinEventSession({
-        sessionId: validSessionId,
+        joinCode: validJoinCode,
         registrationId,
         nickname: validNickname,
       })
@@ -123,7 +154,7 @@ export function JoinSessionScreen({
       setDraft(registered)
       setSession(result.session)
       setRemoteParticipant(result.participant)
-      setSessionId(validSessionId)
+      setJoinCode(validJoinCode)
       setNotice(result.created
         ? `You joined ${result.session.name}.`
         : 'This browser was already registered for this session. Your place is restored.')
@@ -185,7 +216,7 @@ export function JoinSessionScreen({
       setDraft(null)
       setSession(null)
       setRemoteParticipant(null)
-      setSessionId('')
+      setJoinCode('')
       setNickname('')
       setError(null)
       setNotice(null)
@@ -194,7 +225,7 @@ export function JoinSessionScreen({
     }
   }
 
-  const inputSessionId = normalizeSessionId(sessionId)
+  const inputJoinCode = normalizeJoinCode(joinCode)
   const inputNickname = normalizeNickname(nickname)
   const serviceConfigurationMessage = supabaseConfigurationError
     ?? (!isSupabaseConfigured ? 'Event service configuration is missing. This session cannot be joined yet.' : null)
@@ -215,25 +246,27 @@ export function JoinSessionScreen({
         <p className="event-intro">
           {participant
             ? 'Your registration is saved on this device. Session status updates automatically.'
-            : 'Enter the session ID provided by your organizer and choose a display nickname.'}
+            : 'Enter the four-digit code provided by your organizer and choose a display nickname.'}
         </p>
 
         {!participant ? (
           <form className="event-join-form" onSubmit={join}>
-            <label htmlFor="event-session-id">Session ID</label>
+            <label htmlFor="event-join-code">4-digit session code</label>
             <input
-              id="event-session-id"
-              name="sessionId"
+              id="event-join-code"
+              name="joinCode"
+              type="text"
               autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              value={sessionId}
-              onChange={event => setSessionId(event.target.value)}
-              placeholder="Paste the event session ID"
-              aria-invalid={Boolean(sessionId) && !inputSessionId}
+              inputMode="numeric"
+              pattern="[0-9]{4}"
+              maxLength={4}
+              value={joinCode}
+              onChange={event => setJoinCode(event.target.value)}
+              placeholder="4821"
+              aria-invalid={Boolean(joinCode) && !inputJoinCode}
             />
-            {sessionId.trim() && !inputSessionId && (
-              <p className="event-field-error" role="alert">Enter a valid session ID.</p>
+            {joinCode.trim() && !inputJoinCode && (
+              <p className="event-field-error" role="alert">Enter exactly four digits.</p>
             )}
             <label htmlFor="event-nickname">Nickname</label>
             <input
@@ -250,7 +283,7 @@ export function JoinSessionScreen({
               <p className="event-field-error" role="alert">Use 1 to 32 characters without line breaks.</p>
             )}
             <p className="event-hint">Nicknames are display names and do not need to be unique.</p>
-            {session && session.id === inputSessionId && (
+            {session && session.joinCode === inputJoinCode && (
               <div className={`event-status event-status-${session.status}`}>
                 <strong>{session.name}</strong>
                 <span>{session.playerCount} / {session.maxPlayers} participants</span>
@@ -264,7 +297,7 @@ export function JoinSessionScreen({
             <button
               className="event-primary-button"
               type="submit"
-              disabled={busy || !inputSessionId || !inputNickname || !isSupabaseConfigured}
+              disabled={busy || !inputJoinCode || !inputNickname || !isSupabaseConfigured}
             >
               {busy ? 'Joining...' : 'Join session'}
             </button>
