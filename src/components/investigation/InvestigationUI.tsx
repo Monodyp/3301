@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { Search, ShieldAlert, X } from 'lucide-react'
 import type { Game } from '../../game/useGame'
 import type { AppId } from '../../types'
+import { CHARACTERS } from '../../game/content/index.ts'
 
 export function EvidenceTray({ game, openApp }: { game: Game; openApp: (app: AppId) => void }) {
   const [open, setOpen] = useState(false)
   const encounter = game.encounter
   if (!encounter) return null
-  const discovered = game.character?.encounters.flatMap(item => item.artifacts).filter(artifact =>
+  const discovered = CHARACTERS.flatMap(character => character.encounters).flatMap(item => item.artifacts).filter(artifact =>
     game.state.inspectedArtifacts.includes(artifact.id),
   ) ?? []
   const found = game.state.inspectedArtifacts.filter(id => encounter.artifacts.some(a => a.id === id)).length

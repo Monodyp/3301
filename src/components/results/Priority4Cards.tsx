@@ -7,10 +7,11 @@ export function FeedbackCard({ game, onContinue }: { game: Game; onContinue: () 
   const decision = game.lastDecision
   if (!encounter || !decision) return null
   const feedback = feedbackForDecision(encounter, decision)
+  const isEventRun = game.state.runMode === 'event'
   return (
-    <aside className="feedback-card" role="dialog" aria-label="Decision feedback">
+    <aside className="feedback-card" role="dialog" aria-label={isEventRun ? 'Protective action feedback' : 'Decision feedback'}>
       <span className={`feedback-result ${decision.correct ? 'correct' : 'incorrect'}`}>
-        {feedback.result}
+        {isEventRun ? 'Incident secured' : feedback.result}
       </span>
       <h2>{decision.correct ? 'Secure response' : 'Risky response — here is a safer way'}</h2>
       <div className="feedback-section">
@@ -37,7 +38,11 @@ export function FeedbackCard({ game, onContinue }: { game: Game; onContinue: () 
   )
 }
 
-export function ResultsScreen({ game, onPlayAgain }: { game: Game; onPlayAgain: () => void }) {
+export function ResultsScreen({ game, onPlayAgain, playAgainLabel = 'Play again' }: {
+  game: Game
+  onPlayAgain: () => void
+  playAgainLabel?: string
+}) {
   const categoryResults = game.categoryResults
   return (
     <aside className="results-screen" role="dialog" aria-label="Run results">
@@ -47,7 +52,7 @@ export function ResultsScreen({ game, onPlayAgain }: { game: Game; onPlayAgain: 
       </div>
       <div className="results-stats">
         <div><strong>{game.state.playerScore}</strong><span>Total score</span></div>
-        <div><strong>{game.correctCount}/8</strong><span>Correct</span></div>
+        <div><strong>{game.correctCount}/{game.state.encounterQueue.length}</strong><span>Correct</span></div>
         <div><strong>{game.completionTime}</strong><span>Time</span></div>
       </div>
       <div className="category-results" aria-label="Category results">
@@ -72,7 +77,7 @@ export function ResultsScreen({ game, onPlayAgain }: { game: Game; onPlayAgain: 
           )
         })}
       </div>
-      <button className="results-play-again" onClick={onPlayAgain}>Play again</button>
+      <button className="results-play-again" onClick={onPlayAgain}>{playAgainLabel}</button>
     </aside>
   )
 }

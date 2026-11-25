@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HorrorStage } from '../types'
+import { playGlitchSound, type GlitchSoundType } from '../game/audio'
 
 const GLITCH_DURATION_MS = 900
 const WARNING_DURATION_MS = 5500
@@ -10,8 +11,8 @@ export function useHorrorState() {
   const [glitchId, setGlitchId] = useState(0)
   const [warningVisible, setWarningVisible] = useState(false)
   const [warningId, setWarningId] = useState(0)
-  const glitchTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null)
-  const warningTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  const glitchTimer = useRef<number | null>(null)
+  const warningTimer = useRef<number | null>(null)
 
   const dismissWarning = useCallback(() => {
     if (warningTimer.current !== null) window.clearTimeout(warningTimer.current)
@@ -33,10 +34,11 @@ export function useHorrorState() {
     }
   }, [])
 
-  const triggerGlitch = useCallback(() => {
+  const triggerGlitch = useCallback((soundType: GlitchSoundType = 'subtle', eventId?: string) => {
     if (glitchTimer.current !== null) window.clearTimeout(glitchTimer.current)
     setGlitchId(id => id + 1)
     setGlitchActive(true)
+    playGlitchSound(soundType, eventId)
     glitchTimer.current = window.setTimeout(() => {
       setGlitchActive(false)
       glitchTimer.current = null

@@ -6,13 +6,14 @@ import { PHONE_TARGETS } from '../../game/narrative'
 import { progressiveAdvertisement } from './progressiveAd'
 import { ReadMarker } from './ReadMarker'
 
-export function BrowserApp({ data, encounter, character, completedEncounterIds = [], onPhoneEvent, clues }: {
+export function BrowserApp({ data, encounter, character, completedEncounterIds = [], onPhoneEvent, clues, actionPanel }: {
   data?: CharacterPhoneData
   encounter?: Encounter
   character?: Character
   completedEncounterIds?: readonly string[]
   onPhoneEvent?: (event: PhoneEvent) => void
   clues?: (surface: 'incident' | 'app') => ReactNode
+  actionPanel?: ReactNode
 }) {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
   const progressiveAd = progressiveAdvertisement(character, completedEncounterIds)
@@ -111,6 +112,7 @@ export function BrowserApp({ data, encounter, character, completedEncounterIds =
           </>
         )}
       </div>
+      {actionPanel}
     </div>
   )
 }

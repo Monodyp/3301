@@ -4,6 +4,7 @@ import {
   joinEventSession,
   lookupEventSession,
   refreshEventParticipant,
+  type EventParticipantRun,
   type EventParticipantSummary,
   type EventSessionSummary,
 } from '../../event/api.ts'
@@ -17,10 +18,11 @@ import {
   type StoredParticipant,
 } from '../../event/participant.ts'
 import { isSupabaseConfigured, supabaseConfigurationError } from '../../lib/supabase.ts'
+import { validateScenarioAssignment, type ScenarioId } from '../../game/scenarioRegistry.ts'
 
 interface JoinSessionScreenProps {
-  hasSavedEventRun: boolean
-  onBeginRun: (resume: boolean) => void
+  savedEventRunId: string | null
+  onBeginRun: (run: EventParticipantRun & { scenarioIds: ScenarioId[] }) => void
   onLocalPractice: () => void
 }
 
@@ -29,7 +31,7 @@ function storedName(participant: StoredParticipant | null): string {
 }
 
 export function JoinSessionScreen({
-  hasSavedEventRun,
+  savedEventRunId,
   onBeginRun,
   onLocalPractice,
 }: JoinSessionScreenProps) {
@@ -144,7 +146,17 @@ export function JoinSessionScreen({
           ? 'This event session has ended.'
           : 'The organizer has not started this session yet.')
       }
-      const resume = participant.eventRunStarted && hasSavedEventRun
+      const run = result.participant.run
+      if (!run || !run.id.trim()) {
+        throw new Error('The event service did not return your assigned scenario run. Try again.')
+      }
+      if (run.status === 'completed') {
+        throw new Error('This scenario run is already complete. Ask the organizer for help if this seems incorrect.')
+      }
+      const assignment = validateScenarioAssignment(run.scenarioIds)
+      if (!assignment.ok) {
+        throw new Error(`${assignment.error} Your game has not started; retry or contact the organizer.`)
+      }
       const updated: StoredParticipant = {
         ...participant,
         completionStatus: result.participant.completionStatus,
@@ -156,8 +168,9 @@ export function JoinSessionScreen({
         id: result.participant.id,
         nickname: participant.nickname,
         completionStatus: result.participant.completionStatus,
+        run: result.participant.run,
       })
-      onBeginRun(resume)
+      onBeginRun({ ...run, scenarioIds: assignment.scenarioIds })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not verify session status.')
     } finally {
@@ -292,7 +305,11 @@ export function JoinSessionScreen({
                 disabled={!canStart || busy}
                 onClick={begin}
               >
-                {busy ? 'Verifying session...' : participant.eventRunStarted && hasSavedEventRun ? 'Resume game' : 'Begin game'}
+                {busy
+                  ? 'Verifying session...'
+                  : savedEventRunId && remoteParticipant?.run?.id === savedEventRunId
+                    ? 'Resume game'
+                    : 'Begin game'}
               </button>
             )}
             {session?.status === 'completed' && (

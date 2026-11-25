@@ -3,7 +3,7 @@ import { Coffee, TrainFront, ShoppingBag } from 'lucide-react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { AppliedConsequence } from '../../game/types'
 
-export function WalletApp({ data, balance, consequences = [], clues }: { data?: CharacterPhoneData; balance?: number; consequences?: AppliedConsequence[]; clues?: (surface: 'incident' | 'app') => ReactNode }) {
+export function WalletApp({ data, balance, consequences = [], clues, actionPanel }: { data?: CharacterPhoneData; balance?: number; consequences?: AppliedConsequence[]; clues?: (surface: 'incident' | 'app') => ReactNode; actionPanel?: ReactNode }) {
   const consequenceTransactions = consequences.filter(item => item.kind === 'balance_loss').map(item => ({
     name: 'Unverified payment',
     detail: item.encounterId,
@@ -27,6 +27,7 @@ export function WalletApp({ data, balance, consequences = [], clues }: { data?: 
           </div>
         ))}
       </div>
+      {actionPanel}
     </div>
   )
 }

@@ -1,32 +1,26 @@
-# React + TypeScript + Vite
+# 3301
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+3301 is a browser-based cybersecurity survival game built with React, TypeScript, and Vite. Individual gameplay remains on each device; when configured, participants can join a shared seminar session and wait for the organizer to activate it.
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Supabase credentials are not required for local single-player development. Without them, `npm run dev` opens clearly labeled local practice. Event registrations use the Supabase session API when configured; results are not submitted in this phase.
+
+Run the existing checks with:
+
+```sh
+npm test
+npm run build
+npm run lint
+```
+
+## Event deployment foundation
+
+Deployment and event setup are documented in [docs/deployment.md](./docs/deployment.md). Database migrations are in [supabase/migrations/](./supabase/migrations); the session Edge Function is in [supabase/functions/session-api/](./supabase/functions/session-api).
+
+Participant joining and session lifecycle are implemented. Character balancing, score submission, a leaderboard, and an organizer dashboard remain future work.

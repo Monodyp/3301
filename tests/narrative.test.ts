@@ -302,7 +302,7 @@ test('G. an edited save cannot expose a future decision or replay a submitted on
   assert.equal(gameReducer({ ...restored, phase: 'DECISION' }, { type: 'CHOOSE', choiceId: orderedChoices(ready)[0].id, decisionId: current, now: T0 }).decisionHistory.length, 0)
 
   // Saves from before the narrative engine start fresh.
-  assert.equal(loadGame({ getItem: () => JSON.stringify({ ...ready, saveVersion: SAVE_VERSION - 1 }) }).phase, 'MAIN_MENU')
+  assert.equal(loadGame({ getItem: () => JSON.stringify({ ...ready, saveVersion: SAVE_VERSION - 2 }) }).phase, 'MAIN_MENU')
   const { narrative: _dropped, ...withoutNarrative } = ready
   void _dropped
   assert.equal(loadGame({ getItem: () => JSON.stringify(withoutNarrative) }).phase, 'MAIN_MENU')

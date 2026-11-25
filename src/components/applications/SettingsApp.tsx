@@ -4,7 +4,7 @@ import type { CharacterPhoneData } from '../../data/characterData'
 import type { Hint } from '../../game/types'
 import type { AttackEvent } from '../../game/attacks'
 
-export function SettingsApp({ data, accountSecurity, hints = [], completedTasks = [], onCompleteTask, securityAlerts = [], clues }: {
+export function SettingsApp({ data, accountSecurity, hints = [], completedTasks = [], onCompleteTask, securityAlerts = [], clues, actionPanel }: {
   data?: CharacterPhoneData
   accountSecurity?: number
   hints?: Hint[]
@@ -12,6 +12,7 @@ export function SettingsApp({ data, accountSecurity, hints = [], completedTasks 
   onCompleteTask?: (taskId: string) => void
   securityAlerts?: readonly AttackEvent[]
   clues?: (surface: 'incident' | 'app') => ReactNode
+  actionPanel?: ReactNode
 }) {
   const settings = data?.settings
   const securityStatus = accountSecurity !== undefined
@@ -67,6 +68,7 @@ export function SettingsApp({ data, accountSecurity, hints = [], completedTasks 
           )
         })}
       </div>
+      {actionPanel}
     </div>
   )
 }

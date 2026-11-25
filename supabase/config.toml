@@ -1,0 +1,4 @@
+project_id = "3301"
+
+[functions.session-api]
+verify_jwt = false

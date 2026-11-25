@@ -22,6 +22,7 @@ import type {
   ScenarioDefinition,
 } from './types.ts'
 import { getCharacter } from './content/index.ts'
+import { getScenarioDefinition, isScenarioId } from './scenarioRegistry.ts'
 import { ENCOUNTER_NARRATIVES, NARRATIVE_CONTENT, PHONE_TARGETS, getDecision, getEncounterNarrative, getScenario } from './content/scenarios.ts'
 
 export { NARRATIVE_CONTENT, PHONE_TARGETS }
@@ -137,7 +138,7 @@ export function isDiscoverable(state: GameState, artifactId: string): boolean {
   if (!encounterId || encounterId !== queuedEncounterId(state)) return false
   const scenario = activeScenario(state)
   if (!scenario || scenario.requiredEvidence.length === 0) return false
-  const encounter = getCharacter(state.characterId)?.encounters.find(e => e.id === encounterId)
+  const encounter = isScenarioId(encounterId) ? getScenarioDefinition(encounterId)?.encounter : undefined
   return encounter?.artifacts.some(a => a.id === artifactId) ?? false
 }
 
@@ -159,14 +160,26 @@ export type DecisionRejection =
   | 'actions-incomplete'
   | 'narrative-not-presented'
   | 'evidence-missing'
+  | 'event-run-actions-required'
 
 export type DecisionCheck = { ok: true; decision: DecisionDefinition } | { ok: false; reason: DecisionRejection }
 
 // The single rule for whether a decision may be shown or answered.
 export function checkDecision(state: GameState, decisionId: string | null): DecisionCheck {
+  if (state.runMode === 'event') return { ok: false, reason: 'event-run-actions-required' }
   const decision = getDecision(decisionId)
   if (!decision) return { ok: false, reason: 'unknown-decision' }
-  if (decision.characterId !== state.characterId || !getCharacter(state.characterId)) return { ok: false, reason: 'wrong-character' }
+  const authoredEncounter = isScenarioId(decision.encounterId)
+    ? getScenarioDefinition(decision.encounterId)?.encounter
+    : undefined
+  if (!authoredEncounter || decision.characterId !== authoredEncounter.characterId) {
+    return { ok: false, reason: 'wrong-character' }
+  }
+  if (
+    decision.characterId !== state.characterId || !getCharacter(state.characterId)
+  ) {
+    return { ok: false, reason: 'wrong-character' }
+  }
   if (state.narrative.submittedDecisionIds.includes(decision.id)) return { ok: false, reason: 'already-submitted' }
   if (decision.encounterId !== state.narrative.activeEncounterId || decision.encounterId !== queuedEncounterId(state)) {
     return { ok: false, reason: 'inactive-encounter' }

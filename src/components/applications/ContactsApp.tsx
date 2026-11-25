@@ -10,7 +10,7 @@ const contacts = [
   { name: 'Noah Reed', role: 'Friend', color: '#8397b5' },
 ]
 
-export function ContactsApp({ data, encounter: _encounter, clues }: { data?: CharacterPhoneData; encounter?: Encounter; clues?: (surface: 'incident' | 'app') => ReactNode }) {
+export function ContactsApp({ data, encounter: _encounter, clues, actionPanel }: { data?: CharacterPhoneData; encounter?: Encounter; clues?: (surface: 'incident' | 'app') => ReactNode; actionPanel?: ReactNode }) {
   const [selected, setSelected] = useState<number | null>(null)
   const contactsData = data?.contacts ?? contacts
   if (selected !== null) {
@@ -21,6 +21,7 @@ export function ContactsApp({ data, encounter: _encounter, clues }: { data?: Cha
         <div className="large-avatar" style={{ background: contact.color }}>{contact.name[0]}</div>
         <h2>{contact.name}</h2><p>{contact.role}</p>
         <div className="contact-actions"><button><Phone size={20} /><span>call</span></button><button><MessageCircle size={20} /><span>message</span></button></div>
+        {actionPanel}
       </div>
     )
   }
@@ -37,6 +38,7 @@ export function ContactsApp({ data, encounter: _encounter, clues }: { data?: Cha
           </button>
         ))}
       </div>
+      {actionPanel}
     </div>
   )
 }

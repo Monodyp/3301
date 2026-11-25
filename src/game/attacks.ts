@@ -17,8 +17,8 @@
 // Title and message are the incident's authored trigger notification; the
 // escalation tier comes from the attack's position in the run.
 
-import type { AppId, AttackProgress, Character, EncounterLifecycle, GamePhase, GameState } from './types.ts'
-import { CHARACTERS } from './content/index.ts'
+import type { AppId, AttackProgress, EncounterLifecycle, GamePhase, GameState } from './types.ts'
+import { SCENARIO_REGISTRY } from './scenarioRegistry.ts'
 
 export type AttackTier = 1 | 2 | 3 | 4
 
@@ -41,28 +41,26 @@ export interface AttackDefinition {
   app: AppId
 }
 
-function buildDefinitions(characters: readonly Character[]): Map<string, AttackDefinition> {
+function buildDefinitions(): Map<string, AttackDefinition> {
   const all = new Map<string, AttackDefinition>()
-  for (const character of characters) {
-    for (const encounter of character.encounters) {
-      const id = `attack-${encounter.id}`
-      all.set(id, {
-        id,
-        characterId: character.id,
-        encounterId: encounter.id,
-        trigger: { kind: 'incident-delivered', encounterId: encounter.id },
-        resolution: { kind: 'decision-submitted', decisionId: `${encounter.id}-D1` },
-        title: encounter.trigger.title,
-        message: encounter.trigger.message,
-        sender: encounter.trigger.sender,
-        app: encounter.trigger.app,
-      })
-    }
+  for (const { encounter, npcIdentity } of SCENARIO_REGISTRY) {
+    const id = `attack-${encounter.id}`
+    all.set(id, {
+      id,
+      characterId: npcIdentity,
+      encounterId: encounter.id,
+      trigger: { kind: 'incident-delivered', encounterId: encounter.id },
+      resolution: { kind: 'decision-submitted', decisionId: `${encounter.id}-D1` },
+      title: encounter.trigger.title,
+      message: encounter.trigger.message,
+      sender: encounter.trigger.sender,
+      app: encounter.trigger.app,
+    })
   }
   return all
 }
 
-export const ATTACK_DEFINITIONS: ReadonlyMap<string, AttackDefinition> = buildDefinitions(CHARACTERS)
+export const ATTACK_DEFINITIONS: ReadonlyMap<string, AttackDefinition> = buildDefinitions()
 
 export const attackIdFor = (encounterId: string) => `attack-${encounterId}`
 
@@ -79,7 +77,7 @@ export function attackTier(ordinal: number): AttackTier {
 const DELIVERED: readonly EncounterLifecycle[] = ['DELIVERED', 'INVESTIGATING', 'DECISION_PENDING', 'FEEDBACK', 'RESOLVED']
 
 function triggerMet(state: GameState, attack: AttackDefinition): boolean {
-  return attack.characterId === state.characterId
+  return state.encounterQueue.includes(attack.encounterId)
     && DELIVERED.includes(state.narrative.encounterLifecycle[attack.trigger.encounterId])
 }
 

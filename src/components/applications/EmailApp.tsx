@@ -7,7 +7,7 @@ import { ReadMarker } from './ReadMarker'
 
 const INCIDENT = -1
 
-export function EmailApp({ data, encounter, onPhoneEvent, clues }: { data?: CharacterPhoneData; encounter?: Encounter; onPhoneEvent?: (event: PhoneEvent) => void; clues?: (surface: 'incident' | 'app') => ReactNode }) {
+export function EmailApp({ data, encounter, onPhoneEvent, clues, actionPanel }: { data?: CharacterPhoneData; encounter?: Encounter; onPhoneEvent?: (event: PhoneEvent) => void; clues?: (surface: 'incident' | 'app') => ReactNode; actionPanel?: ReactNode }) {
   const [selected, setSelected] = useState<number | null>(null)
   const emailData = data?.emails ?? []
   const incident = encounter?.trigger.app === 'email' ? encounter : undefined
@@ -39,6 +39,7 @@ export function EmailApp({ data, encounter, onPhoneEvent, clues }: { data?: Char
           )}
           <ReadMarker key={targetFor(INCIDENT)} onRead={markRead(INCIDENT)} />
           {clues?.('incident')}
+          {actionPanel}
         </div>
       )
     }
@@ -51,6 +52,7 @@ export function EmailApp({ data, encounter, onPhoneEvent, clues }: { data?: Char
         <div className="email-sender"><div className="avatar">{email.sender[0]}</div><div><strong>{email.sender}</strong><span>to me</span></div><time>{email.time}</time></div>
         <p>{email.body ?? email.preview}</p>
         <ReadMarker key={targetFor(selected)} onRead={markRead(selected)} />
+        {actionPanel}
       </div>
     )
   }
@@ -76,6 +78,7 @@ export function EmailApp({ data, encounter, onPhoneEvent, clues }: { data?: Char
           </button>
         ))}
       </div>
+      {actionPanel}
     </div>
   )
 }

@@ -6,10 +6,9 @@
 // twice, or finish the run early. Use canDispatch() to grey out buttons.
 //
 // The reducer is also the only authority for narrative progression (see
-// narrative.ts): screens report what the player did with REPORT_PHONE_EVENT,
-// and the reducer decides whether that completes a scenario or unlocks a
-// decision. OPEN_DECISION and CHOOSE are checked against checkDecision(), so a
-// decision from another character, encounter or scenario can never open.
+// narrative.ts): screens report phone events, and the reducer decides whether
+// that completes a scenario. Practice runs use validated decisions; event runs
+// use registry-defined protective-action steps.
 //
 // The reducer is pure: time comes in on the action (`now`, in ms) and
 // randomness comes from the run's seed. That makes every run replayable.
@@ -23,13 +22,23 @@ import type {
   GameState,
   PhoneEvent,
 } from './types.ts'
-import { CHARACTERS } from './content/index.ts'
+import { CHARACTERS, getCharacter } from './content/index.ts'
+import { getEncounterNarrative } from './content/scenarios.ts'
+import {
+  getScenarioDefinition,
+  isScenarioId,
+  validateScenarioAssignment,
+  type PhoneSurface,
+  type ResolutionActionId,
+  type ScenarioId,
+} from './scenarioRegistry.ts'
 import { createRng, pick, shuffle } from './random.ts'
 import { scoreDecision } from './scoring.ts'
 import { advanceAttacks, initialAttackProgress, markAttackNotified } from './attacks.ts'
 import {
   CLUE_DWELL_MS,
   PHONE_TARGETS,
+  activeScenario,
   advanceScenarios,
   checkDecision,
   deliverIncident,
@@ -41,18 +50,23 @@ import {
   refreshPendingDecision,
   requiredEncounters,
   resolveEncounter,
+  scenarioProgress,
   submitDecision,
   unlockQueuedEncounter,
 } from './narrative.ts'
 
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 5
 export const ENCOUNTERS_PER_RUN = 8
+export const EVENT_SCENARIOS_PER_RUN = 5
 
 export type GameAction =
   | { type: 'START_RUN'; seed: number; now: number; characterId?: string }
+  | { type: 'START_ASSIGNED_RUN'; runId: string; scenarioIds: readonly string[]; seed: number; now: number }
+  | { type: 'RESTORE_SAVED_RUN'; state: GameState }
   | { type: 'ENTER_PHONE' }
   | { type: 'TRIGGER_ENCOUNTER' } // deliver the active encounter's incident, if it is due
   | { type: 'REPORT_PHONE_EVENT'; event: PhoneEvent; now: number }
+  | { type: 'PERFORM_PROTECTIVE_ACTION'; scenarioId: ScenarioId; actionId: ResolutionActionId; stepId: string; surface: PhoneSurface; now: number }
   | { type: 'INSPECT_ARTIFACT'; artifactId: string; now: number } // optional shortcut: discover at once
   // Automatic discovery: a clue's content came on screen / left it. After
   // CLUE_DWELL_MS of continuous viewing, CLUE_TICK (or leaving) discovers it.
@@ -81,7 +95,7 @@ const ALLOWED: Record<GamePhase, readonly GameAction['type'][]> = {
   CHARACTER_ASSIGNMENT: ['ENTER_PHONE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   PHONE_IDLE: ['TRIGGER_ENCOUNTER', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   ENCOUNTER_INTRO: ['REPORT_PHONE_EVENT', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
-  INVESTIGATION: ['REPORT_PHONE_EVENT', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
+  INVESTIGATION: ['REPORT_PHONE_EVENT', 'PERFORM_PROTECTIVE_ACTION', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'OPEN_DECISION', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   DECISION: ['REPORT_PHONE_EVENT', 'INSPECT_ARTIFACT', ...CLUE_ACTIONS, 'USE_HINT', 'BACK_TO_INVESTIGATION', 'CHOOSE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   CONSEQUENCE: ['CONTINUE', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
   ENCOUNTER_COMPLETE: ['NEXT_ENCOUNTER', 'COMPLETE_SECURITY_TASK', 'ATTACK_NOTIFIED'],
@@ -94,6 +108,8 @@ export function initialGameState(): GameState {
   return {
     saveVersion: SAVE_VERSION,
     phase: 'MAIN_MENU',
+    runMode: null,
+    eventRunId: null,
     sessionId: null,
     seed: null,
     characterId: null,
@@ -115,24 +131,34 @@ export function initialGameState(): GameState {
     runFinishedAt: null,
     completedSecurityTasks: [],
     narrative: initialNarrativeState(),
+    resolutionSteps: {},
+    resolutionActionFeedback: null,
     clueViewing: {},
     attacks: initialAttackProgress(),
   }
 }
 
 export function canDispatch(state: GameState, type: GameAction['type']): boolean {
-  return DEV_ACTIONS.includes(type) || ALLOWED[state.phase].includes(type)
+  return type === 'START_ASSIGNED_RUN'
+    || type === 'RESTORE_SAVED_RUN'
+    || DEV_ACTIONS.includes(type)
+    || ALLOWED[state.phase].includes(type)
 }
 
 // ---------------------------------------------------------------- selectors
 
-export function currentCharacter(state: GameState): Character | undefined {
+export function currentNpc(state: GameState): Character | undefined {
+  const encounter = currentEncounter(state)
+  if (state.runMode === 'event') {
+    return encounter ? getCharacter(encounter.characterId) : undefined
+  }
   return CHARACTERS.find(c => c.id === state.characterId)
 }
 
 export function currentEncounter(state: GameState): Encounter | undefined {
   const id = state.encounterQueue[state.currentEncounterIndex]
-  return currentCharacter(state)?.encounters.find(e => e.id === id)
+  if (!id || !isScenarioId(id)) return undefined
+  return getScenarioDefinition(id)?.encounter
 }
 
 // The current encounter's choices in this player's shuffled order.
@@ -197,6 +223,8 @@ function newRun(seed: number, now: number, previousCharacterId: string | null, f
   return {
     ...initialGameState(),
     phase: 'CHARACTER_ASSIGNMENT',
+    runMode: 'practice',
+    eventRunId: null,
     sessionId: `run-${seed.toString(36)}-${now.toString(36)}`,
     seed,
     characterId: character.id,
@@ -206,6 +234,40 @@ function newRun(seed: number, now: number, previousCharacterId: string | null, f
     walletBalance: character.startingBalance,
     runStartedAt: now,
     narrative: lockedNarrative(encounterQueue),
+  }
+}
+
+function newAssignedRun(
+  runId: string,
+  scenarioIds: readonly string[],
+  seed: number,
+  now: number,
+): GameState | null {
+  if (!runId.trim()) return null
+  const assignment = validateScenarioAssignment(scenarioIds)
+  if (!assignment.ok) return null
+
+  const choiceOrder: Record<string, string[]> = {}
+  const choiceRng = createRng((seed ^ 0x9e3779b9) >>> 0)
+  for (const entry of assignment.entries) {
+    choiceOrder[entry.scenarioId] = shuffle(entry.encounter.choices.map(choice => choice.id), choiceRng)
+  }
+
+  const firstNpc = getCharacter(assignment.entries[0].npcIdentity)
+  return {
+    ...initialGameState(),
+    phase: 'CHARACTER_ASSIGNMENT',
+    runMode: 'event',
+    eventRunId: runId,
+    sessionId: `event-${runId}`,
+    seed,
+    characterId: null,
+    previousCharacterId: null,
+    encounterQueue: assignment.scenarioIds,
+    choiceOrder,
+    walletBalance: firstNpc?.startingBalance ?? 0,
+    runStartedAt: now,
+    narrative: lockedNarrative(assignment.scenarioIds),
   }
 }
 
@@ -219,6 +281,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 }
 
 function reduce(state: GameState, action: GameAction): GameState {
+  if (action.type === 'RESTORE_SAVED_RUN') return action.state
+  if (action.type === 'START_ASSIGNED_RUN') {
+    if (
+      state.runMode === 'event'
+      && state.eventRunId === action.runId
+      && state.encounterQueue.length === action.scenarioIds.length
+      && state.encounterQueue.every((id, index) => id === action.scenarioIds[index])
+    ) {
+      return state
+    }
+    return newAssignedRun(action.runId, action.scenarioIds, action.seed, action.now) ?? state
+  }
   if (!canDispatch(state, action.type)) return state
 
   switch (action.type) {
@@ -226,6 +300,7 @@ function reduce(state: GameState, action: GameAction): GameState {
       return newRun(action.seed, action.now, state.previousCharacterId, action.characterId) ?? state
 
     case 'PLAY_AGAIN':
+      if (state.runMode === 'event') return state
       return newRun(action.seed, action.now, state.characterId) ?? state
 
     case 'ENTER_PHONE':
@@ -245,6 +320,9 @@ function reduce(state: GameState, action: GameAction): GameState {
       if (recorded === state) return state
       return progress(recorded, action.now)
     }
+
+    case 'PERFORM_PROTECTIVE_ACTION':
+      return performProtectiveAction(state, action)
 
     case 'INSPECT_ARTIFACT':
       return inspectArtifact(state, action.artifactId, action.now)
@@ -299,7 +377,13 @@ function reduce(state: GameState, action: GameAction): GameState {
 
     case 'NEXT_ENCOUNTER': {
       const nextIndex = state.currentEncounterIndex + 1
-      const idle = { ...state, encounterStartedAt: null, lastProgressAt: null, clueViewing: {} }
+      const idle = {
+        ...state,
+        encounterStartedAt: null,
+        lastProgressAt: null,
+        clueViewing: {},
+        resolutionActionFeedback: null,
+      }
       if (state.completedEncounters.length >= ENCOUNTERS_PER_RUN || nextIndex >= state.encounterQueue.length) {
         return {
           ...idle,
@@ -396,7 +480,87 @@ function choose(state: GameState, choiceId: string, now: number, decisionId: str
   if (!check.decision.choiceIds.includes(choiceId)) return state
   const choice = encounter.choices.find(c => c.id === choiceId)
   if (!choice) return state
+  return resolveChoice(state, encounter, check.decision, choice, now)
+}
 
+function performProtectiveAction(
+  state: GameState,
+  action: Extract<GameAction, { type: 'PERFORM_PROTECTIVE_ACTION' }>,
+): GameState {
+  if (state.runMode !== 'event' || state.phase !== 'INVESTIGATION') return state
+  const active = activeScenario(state)
+  const entry = getScenarioDefinition(action.scenarioId)
+  if (
+    !active
+    || active.encounterId !== action.scenarioId
+    || active.decisionId === null
+    || state.completedEncounters.includes(action.scenarioId)
+    || !entry
+  ) return state
+
+  const progressState = scenarioProgress(state, active)
+  if (!progressState.actionsComplete || !progressState.narrativePresented) return state
+  if (entry.action.id !== action.actionId) {
+    return rejectProtectiveAction(state, entry.scenarioId, entry.action.id, entry.action.steps[state.resolutionSteps[action.scenarioId]?.length ?? 0])
+  }
+  const completed = state.resolutionSteps[action.scenarioId] ?? []
+  if (completed.includes(action.stepId)) return state
+  const step = entry.action.steps[completed.length]
+  if (!step) return state
+  if (step.id !== action.stepId || step.surface !== action.surface) {
+    return rejectProtectiveAction(state, entry.scenarioId, entry.action.id, step)
+  }
+
+  const completedSteps = [...completed, step.id]
+  const actionComplete = completedSteps.length === entry.action.steps.length
+  const next: GameState = {
+    ...state,
+    resolutionSteps: { ...state.resolutionSteps, [action.scenarioId]: completedSteps },
+    resolutionActionFeedback: {
+      scenarioId: action.scenarioId,
+      actionId: action.actionId,
+      stepId: step.id,
+      outcome: actionComplete ? 'resolved' : 'step-completed',
+      message: step.confirmation,
+    },
+    lastProgressAt: action.now,
+  }
+  if (!actionComplete) return next
+
+  const narrative = getEncounterNarrative(action.scenarioId)
+  const encounter = entry.encounter
+  const decision = narrative?.decision
+  const choice = encounter.choices.find(candidate => candidate.id === entry.action.authoredChoiceId)
+  if (!decision || decision.id !== active.decisionId || !choice?.isCorrect) return state
+  return resolveChoice(next, encounter, decision, choice, action.now)
+}
+
+function rejectProtectiveAction(
+  state: GameState,
+  scenarioId: ScenarioId,
+  actionId: ResolutionActionId,
+  expectedStep: { id: string } | undefined,
+): GameState {
+  if (!expectedStep) return state
+  return {
+    ...state,
+    resolutionActionFeedback: {
+      scenarioId,
+      actionId,
+      stepId: expectedStep.id,
+      outcome: 'rejected',
+      message: 'That action had no effect. The incident is still active.',
+    },
+  }
+}
+
+function resolveChoice(
+  state: GameState,
+  encounter: Encounter,
+  decision: NonNullable<ReturnType<typeof getEncounterNarrative>>['decision'],
+  choice: Encounter['choices'][number],
+  now: number,
+): GameState {
   const keyEvidence = encounter.artifacts.filter(a => a.isKeyEvidence)
   const inspectedKeyEvidence = keyEvidence.filter(a => state.inspectedArtifacts.includes(a.id)).length
   const hintsUsed = state.hintsUsed[encounter.id] ?? 0
@@ -444,7 +608,7 @@ function choose(state: GameState, choiceId: string, now: number, decisionId: str
       accountSecurity,
       consequences,
     },
-    check.decision,
+    decision,
     choice.id,
     choice.isCorrect,
   )

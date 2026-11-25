@@ -254,6 +254,14 @@ export interface EncounterResolution {
   correct: boolean
 }
 
+export interface ResolutionActionFeedback {
+  scenarioId: string
+  actionId: string
+  stepId: string
+  outcome: 'step-completed' | 'resolved' | 'rejected'
+  message: string
+}
+
 export interface NarrativeState {
   activeEncounterId: string | null
   activeScenarioId: string | null
@@ -297,11 +305,14 @@ export interface AppliedConsequence {
 export interface GameState {
   saveVersion: number
   phase: GamePhase
+  // Event players are independent from the NPC identity of each encounter.
+  runMode: 'practice' | 'event' | null
+  eventRunId: string | null
   sessionId: string | null
   seed: number | null
-  characterId: string | null
+  characterId: string | null // local-practice assignment only; null for event runs
   previousCharacterId: string | null // so "Play again" can give a different character
-  encounterQueue: string[] // shuffled encounter ids
+  encounterQueue: string[] // shuffled practice IDs or ordered backend event assignment
   choiceOrder: Record<string, string[]> // encounter id -> shuffled choice ids
   currentEncounterIndex: number
   completedEncounters: string[]
@@ -318,6 +329,8 @@ export interface GameState {
   runFinishedAt: number | null
   completedSecurityTasks: string[]
   narrative: NarrativeState
+  resolutionSteps: Record<string, string[]>
+  resolutionActionFeedback: ResolutionActionFeedback | null
   // Clue content currently on screen: artifact id -> when it became visible.
   // Cleared whenever the content leaves the screen, and on refresh.
   clueViewing: Record<string, number>

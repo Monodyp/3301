@@ -5,7 +5,7 @@ import type { Encounter, PhoneEvent } from '../../game/types'
 import { PHONE_TARGETS } from '../../game/narrative'
 import { ReadMarker } from './ReadMarker'
 
-export function SocialApp({ data, encounter, onPhoneEvent, clues }: { data?: CharacterPhoneData; encounter?: Encounter; onPhoneEvent?: (event: PhoneEvent) => void; clues?: (surface: 'incident' | 'app') => ReactNode }) {
+export function SocialApp({ data, encounter, onPhoneEvent, clues, actionPanel }: { data?: CharacterPhoneData; encounter?: Encounter; onPhoneEvent?: (event: PhoneEvent) => void; clues?: (surface: 'incident' | 'app') => ReactNode; actionPanel?: ReactNode }) {
   const [incidentOpen, setIncidentOpen] = useState(false)
   const posts = data?.socialPosts ?? []
   const incident = encounter?.trigger.app === 'social' ? encounter : undefined
@@ -33,6 +33,7 @@ export function SocialApp({ data, encounter, onPhoneEvent, clues }: { data?: Cha
           <ReadMarker key={target} onRead={() => onPhoneEvent?.({ kind: 'MESSAGE_READ', app: 'social', target })} />
           {clues?.('incident')}
         </div>
+        {actionPanel}
       </div>
     )
   }
@@ -70,6 +71,7 @@ export function SocialApp({ data, encounter, onPhoneEvent, clues }: { data?: Cha
           </article>
         ))}
       </div>
+      {actionPanel}
     </div>
   )
 }

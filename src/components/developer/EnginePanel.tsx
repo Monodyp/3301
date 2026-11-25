@@ -20,7 +20,7 @@ const STEPS: { type: GameAction['type']; label: string }[] = [
 ]
 
 export function EnginePanel({ game }: { game: Game }) {
-  const { state, actions, can, character, encounter, choices, lastDecision, hintsShown, nextHintAt, scenario, pendingDecision } = game
+  const { state, actions, can, storyCharacter, encounter, choices, lastDecision, hintsShown, nextHintAt, scenario, pendingDecision } = game
   const [seedText, setSeedText] = useState('')
   const [characterId, setCharacterId] = useState('')
   const seed = seedText.trim() === '' ? undefined : Number(seedText) >>> 0
@@ -58,9 +58,9 @@ export function EnginePanel({ game }: { game: Game }) {
         <button className="engine-danger" onClick={actions.devReset}>Reset</button>
       </div>
 
-      {character && (
+      {storyCharacter && (
         <dl className="engine-stats">
-          <dt>Character</dt><dd>{character.name} ({character.archetype})</dd>
+          <dt>Story NPC</dt><dd>{storyCharacter.name} ({storyCharacter.archetype})</dd>
           <dt>Seed</dt><dd>{state.seed}</dd>
           <dt>Encounter</dt><dd>{state.currentEncounterIndex + 1}/{state.encounterQueue.length} {encounter ? `${encounter.archetype} ${encounter.title}` : ''}</dd>
           <dt>Score</dt><dd>{state.playerScore} ({game.correctCount} correct, {game.rating})</dd>

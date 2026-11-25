@@ -9,11 +9,11 @@
 //
 // The run is saved after every change and restored on refresh.
 
-import { useCallback, useEffect, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { GameState, PhoneEvent } from './types.ts'
 import {
   canDispatch,
-  currentCharacter,
+  currentNpc,
   currentEncounter,
   gameReducer,
   lastDecision,
@@ -26,17 +26,32 @@ import { clueSource, type ClueSource } from './content/scenarios.ts'
 import { attackEvents, attackNotificationDue } from './attacks.ts'
 import type { Artifact } from './types.ts'
 import { clearSave, loadGame, saveGame } from './storage.ts'
+import type { RunStorageMode } from './storage.ts'
+import {
+  getScenarioDefinition,
+  isScenarioId,
+  type PhoneSurface,
+  type ResolutionActionId,
+  type ScenarioId,
+} from './scenarioRegistry.ts'
 import { randomSeed } from './random.ts'
 import { horrorStageFor, resultsByCategory, survivalRating } from './scoring.ts'
 import { formatCompletionTime } from './educational.ts'
 
-export function useGame() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, () => loadGame())
+export function useGame(storageMode: RunStorageMode = 'practice') {
+  const [state, dispatch] = useReducer(gameReducer, storageMode, mode => loadGame(undefined, mode))
+  const previousStorageMode = useRef(storageMode)
 
   useEffect(() => {
-    if (state.phase === 'MAIN_MENU') clearSave()
-    else saveGame(state)
+    if (state.phase === 'MAIN_MENU') return
+    saveGame(state)
   }, [state])
+
+  useEffect(() => {
+    if (previousStorageMode.current === storageMode) return
+    previousStorageMode.current = storageMode
+    dispatch({ type: 'RESTORE_SAVED_RUN', state: loadGame(undefined, storageMode) })
+  }, [storageMode])
 
   const send = useCallback((action: GameAction) => dispatch(action), [])
 
@@ -44,6 +59,20 @@ export function useGame() {
     () => ({
       startRun: (options: { seed?: number; characterId?: string } = {}) =>
         send({ type: 'START_RUN', seed: options.seed ?? randomSeed(), now: Date.now(), characterId: options.characterId }),
+      startAssignedRun: (options: { runId: string; scenarioIds: readonly ScenarioId[]; seed?: number }) =>
+        send({
+          type: 'START_ASSIGNED_RUN',
+          runId: options.runId,
+          scenarioIds: options.scenarioIds,
+          seed: options.seed ?? randomSeed(),
+          now: Date.now(),
+        }),
+      performProtectiveAction: (options: {
+        scenarioId: ScenarioId
+        actionId: ResolutionActionId
+        stepId: string
+        surface: PhoneSurface
+      }) => send({ type: 'PERFORM_PROTECTIVE_ACTION', ...options, now: Date.now() }),
       enterPhone: () => send({ type: 'ENTER_PHONE' }),
       // Delivers the active encounter's incident. The engine ignores it unless one is due.
       triggerEncounter: () => send({ type: 'TRIGGER_ENCOUNTER' }),
@@ -62,10 +91,13 @@ export function useGame() {
       nextEncounter: () => send({ type: 'NEXT_ENCOUNTER', now: Date.now() }),
       playAgain: (seed?: number) => send({ type: 'PLAY_AGAIN', seed: seed ?? randomSeed(), now: Date.now() }),
       devJumpTo: (index: number) => send({ type: 'DEV_JUMP_TO_ENCOUNTER', index }),
-      devReset: () => send({ type: 'DEV_RESET' }),
+      devReset: () => {
+        clearSave(undefined, state.runMode ?? storageMode)
+        send({ type: 'DEV_RESET' })
+      },
       completeSecurityTask: (taskId: string) => send({ type: 'COMPLETE_SECURITY_TASK', taskId }),
     }),
-    [send],
+    [send, state.runMode, storageMode],
   )
 
   const derived = useMemo(() => deriveGameView(state), [state])
@@ -78,6 +110,10 @@ export function useGame() {
 // Everything screens usually need, computed from state in one place.
 export function deriveGameView(state: GameState) {
   const encounter = currentEncounter(state)
+  const activeEncounterId = state.narrative.activeEncounterId
+  const resolutionAction = state.runMode === 'event' && activeEncounterId && isScenarioId(activeEncounterId)
+    ? getScenarioDefinition(activeEncounterId)
+    : undefined
   const correctCount = state.decisionHistory.filter(d => d.correct).length
   const mistakes = state.decisionHistory.length - correctCount
   const decision = pendingDecision(state)
@@ -93,11 +129,12 @@ export function deriveGameView(state: GameState) {
       }))
     : []
   return {
-    character: currentCharacter(state),
+    storyCharacter: currentNpc(state),
     encounter,
     // Only the pending decision's choices, in this player's shuffled order.
     choices: decision ? orderedChoices(state).filter(choice => decision.choiceIds.includes(choice.id)) : [],
     scenario: activeScenario(state),
+    resolutionAction: resolutionAction ?? null,
     pendingDecision: decision,
     incidentDue: incidentDue(state),
     lastDecision: lastDecision(state),

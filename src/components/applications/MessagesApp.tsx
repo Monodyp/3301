@@ -11,7 +11,7 @@ const INCIDENT = -1
 // Reports CONVERSATION_OPENED when a conversation is opened and MESSAGE_READ
 // when its last message scrolls into view. The engine decides whether either
 // matters; ordinary conversations (like Mara's package chat) never do.
-export function MessagesApp({ data, encounter, onPhoneEvent, clues }: { data?: CharacterPhoneData; encounter?: Encounter; onPhoneEvent?: (event: PhoneEvent) => void; clues?: (surface: 'incident' | 'app') => ReactNode }) {
+export function MessagesApp({ data, encounter, onPhoneEvent, clues, actionPanel }: { data?: CharacterPhoneData; encounter?: Encounter; onPhoneEvent?: (event: PhoneEvent) => void; clues?: (surface: 'incident' | 'app') => ReactNode; actionPanel?: ReactNode }) {
   const [selected, setSelected] = useState<number | null>(null)
   const [sentReplies, setSentReplies] = useState<Record<number, string[]>>({})
   const conversationsData: ConversationData[] = data?.conversations ?? []
@@ -35,6 +35,7 @@ export function MessagesApp({ data, encounter, onPhoneEvent, clues }: { data?: C
           <ReadMarker key={targetFor(INCIDENT)} onRead={markRead(INCIDENT)} />
           {clues?.('incident')}
         </div>
+        {actionPanel}
       </div>
     )
     const conversation = conversationsData.find(item => item.id === selected) ?? conversationsData[0]
@@ -60,6 +61,7 @@ export function MessagesApp({ data, encounter, onPhoneEvent, clues }: { data?: C
             <div key={`reply-${index}`} className="chat-bubble me"><span>{reply}</span><time>now</time></div>
           ))}
         </div>
+        {actionPanel}
         <div className="canned-replies" aria-label="Canned replies">
           {(conversation.cannedReplies ?? ['I am going to verify this first.', 'I will not share private information.']).map(reply => (
             <button key={reply} onClick={() => setSentReplies(current => ({
@@ -86,6 +88,7 @@ export function MessagesApp({ data, encounter, onPhoneEvent, clues }: { data?: C
           </button>
         ))}
       </div>
+      {actionPanel}
     </div>
   )
 }

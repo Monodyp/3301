@@ -16,10 +16,11 @@
 import { useEffect, useRef } from 'react'
 import type { ConsequenceKind } from './types.ts'
 import type { Game } from './useGame.ts'
+import type { GlitchSoundType } from './audio.ts'
 
 const GLITCH_ON: readonly ConsequenceKind[] = ['glitch', 'antagonist', 'account_compromise']
 
-export function useGameEffects(game: Game, horror: { triggerGlitch: () => void }) {
+export function useGameEffects(game: Game, horror: { triggerGlitch: (soundType?: GlitchSoundType, eventId?: string) => void }) {
   const { state, actions, nextHintAt, nextClueAt } = game
   const { triggerGlitch } = horror
 
@@ -29,10 +30,13 @@ export function useGameEffects(game: Game, horror: { triggerGlitch: () => void }
     const count = state.consequences.length
     if (count > seenConsequences.current) {
       const latest = state.consequences[count - 1]
-      if (GLITCH_ON.includes(latest.kind)) triggerGlitch()
+      if (GLITCH_ON.includes(latest.kind)) {
+        const soundType = game.horrorStage === 'UNSETTLED' ? 'jittered' : 'subtle'
+        triggerGlitch(soundType, `${state.sessionId ?? 'no-session'}:${count}`)
+      }
     }
     seenConsequences.current = count
-  }, [state.consequences, triggerGlitch])
+  }, [state.consequences, state.sessionId, game.horrorStage, triggerGlitch])
 
   // Clue dwell timer.
   useEffect(() => {
