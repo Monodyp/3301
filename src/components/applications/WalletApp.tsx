@@ -16,9 +16,12 @@ export function WalletApp({ game, data, balance, consequences = [] }: { game: Ga
     amount: -(item.amount ?? 0),
   }))
   const transactions = [...consequenceTransactions, ...(data?.walletTransactions ?? [])]
-  const paymentInteractions = interactionsFor(game, 'wallet', 'payment-send', 'payment-decline')
+  const paymentInteractions = interactionsFor(game, 'wallet', 'payment-send', 'payment-decline', 'menu-item')
   const hasPaymentRequest = Boolean(game.encounter?.artifacts.some(artifact => artifact.app === 'wallet') || paymentInteractions.length > 0)
   const paymentArtifact = game.encounter?.artifacts.find(artifact => artifact.app === 'wallet')
+  const transactionHistoryReviewed = Boolean(game.encounter && game.state.performedPhoneInteractions[game.encounter.id]?.some(id =>
+    game.resolutionAction?.action.interactions.some(interaction => interaction.id === id && interaction.actionType === 'reviewTransactions'),
+  ))
   const paymentClueRef = usePassiveClueTarget(game, 'wallet', 'app', paymentOpen && selectedTransaction === null)
   return (
     <div className="app-content wallet-app">
@@ -43,7 +46,9 @@ export function WalletApp({ game, data, balance, consequences = [] }: { game: Ga
                   <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction}>
                     {interaction.control === 'payment-send'
                       ? `Send${interaction.label.match(/₱[\d,]+/) ? ` ${interaction.label.match(/₱[\d,]+/)?.[0]}` : ''}`
-                      : /campus|office/i.test(interaction.label) ? 'Use campus payment' : 'Decline'}
+                      : interaction.control === 'payment-decline'
+                        ? /campus|office/i.test(interaction.label) ? 'Use campus payment' : 'Decline'
+                        : interaction.label}
                   </ScenarioPhoneInteraction>
                 ))}
               </div>
@@ -52,6 +57,14 @@ export function WalletApp({ game, data, balance, consequences = [] }: { game: Ga
         </section>
       )}
       <h3>Recent activity</h3>
+      {transactionHistoryReviewed && paymentArtifact && (
+        <section className="wallet-transaction-detail" aria-label="Reviewed payment request details">
+          <strong>Request under review · {game.encounter?.trigger.sender}</strong>
+          <p>{game.encounter?.trigger.message}</p>
+          <p>{paymentArtifact.detail}</p>
+          <small>Reviewing this request does not send money or resolve the incident.</small>
+        </section>
+      )}
       <div className="transaction-list">
         {transactions.map((item, index) => (
           <button className="transaction transaction-button" key={`${item.name}-${index}`} onClick={() => setSelectedTransaction(index)}>

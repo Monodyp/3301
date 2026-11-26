@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 
 import { CHARACTERS, getEncounter, validateContent } from '../src/game/content/index.ts'
 import { CHARACTER_PHONE_DATA } from '../src/data/characterData.ts'
-import { trustedLocalSearch } from '../src/components/applications/phoneInteractionUtils.ts'
+import { nextActionNavigationHint, trustedLocalSearch } from '../src/components/applications/phoneInteractionUtils.ts'
 import {
   BACKEND_SCENARIO_IDS,
+  PROTECTIVE_ACTION_CATALOG,
   SCENARIO_REGISTRY,
   SUPPORTED_PHONE_SURFACES,
   getScenarioDefinition,
@@ -22,6 +23,24 @@ test('registry covers the exact 16 backend scenario IDs once', () => {
   assert.equal(isScenarioId('MK-A1'), true)
   assert.equal(isScenarioId('RF-O2'), true)
   assert.equal(isScenarioId('MK-A4'), false)
+})
+
+test('wallet and email catalog actions remain semantically distinct and never require a payment', () => {
+  const emailActions = [
+    PROTECTIVE_ACTION_CATALOG.reportPhishingEmail,
+    PROTECTIVE_ACTION_CATALOG.deleteEmail,
+    PROTECTIVE_ACTION_CATALOG.blockEmailSender,
+  ]
+  assert.equal(new Set(emailActions.map(action => action.title)).size, emailActions.length)
+  assert.match(emailActions[0]!.description, /flags the email/i)
+  assert.match(emailActions[1]!.description, /removes the email/i)
+  assert.match(emailActions[2]!.description, /prevents further email/i)
+
+  for (const entry of SCENARIO_REGISTRY) {
+    for (const interaction of entry.action.interactions.filter(item => item.surface === 'wallet' && item.classification === 'correct')) {
+      assert.notEqual(interaction.control, 'payment-send', `${entry.scenarioId} never requires sending money`)
+    }
+  }
 })
 
 test('each backend ID resolves to its original authored encounter and NPC identity', () => {
@@ -51,6 +70,7 @@ test('every action is grounded in the authored correct choice and has its own ID
     assert.ok(entry.action.primaryAction.length > 0)
     assert.ok(entry.action.successCondition.length > 0)
     assert.ok(entry.action.playerDescription.length > 0)
+    assert.ok(entry.action.contextHint.length > 0)
     assert.deepEqual(entry.action.incorrectBehavior, {
       kind: 'leave-unresolved',
       resolvesIncident: false,
@@ -72,13 +92,57 @@ test('every action uses a supported phone surface and declares its parameters', 
   }
 })
 
+test('every scenario has one valid primary action in its native application', () => {
+  const expectedPrimaryActions = {
+    'MK-A1': 'blockMessageAccount',
+    'MK-A2': 'leaveSocialGroup',
+    'MK-A3': 'reportPhishingEmail',
+    'MK-R1': 'reportPhishingEmail',
+    'MK-R2': 'declinePayment',
+    'MK-R3': 'reportSocialAccount',
+    'MK-O1': 'verifyEmailSender',
+    'MK-O2': 'refuseMessageAttachment',
+    'RF-A1': 'restrictMessageAccess',
+    'RF-A2': 'leaveAndReportSocialGroup',
+    'RF-A3': 'verifyWebsite',
+    'RF-R1': 'navigateOfficialWebsite',
+    'RF-R2': 'declinePayment',
+    'RF-R3': 'verifyContactIdentity',
+    'RF-O1': 'refuseEmailRequest',
+    'RF-O2': 'rejectInstallation',
+  } as const
+  for (const entry of SCENARIO_REGISTRY) {
+    const primary = entry.action.interactions.find(interaction => interaction.id === entry.action.primaryInteractionId)
+    assert.ok(primary, `${entry.scenarioId} primary interaction exists`)
+    assert.equal(primary.classification, 'correct', `${entry.scenarioId} primary is protective`)
+    assert.equal(primary.surface, entry.action.surface, `${entry.scenarioId} primary is in its declared app`)
+    assert.ok(primary.actionType, `${entry.scenarioId} primary maps to the shared catalog`)
+    assert.equal(primary.actionType, expectedPrimaryActions[entry.scenarioId], `${entry.scenarioId} primary mapping`)
+    assert.equal(PROTECTIVE_ACTION_CATALOG[primary.actionType].surface, primary.surface, `${entry.scenarioId} catalog surface`)
+  }
+})
+
+test('evidence unlocks a destination cue for the primary app without revealing its action', () => {
+  for (const entry of SCENARIO_REGISTRY) {
+    const primary = entry.action.interactions.find(interaction => interaction.id === entry.action.primaryInteractionId)!
+    const otherSurface = SUPPORTED_PHONE_SURFACES.find(surface => surface !== primary.surface)!
+    assert.equal(
+      nextActionNavigationHint(entry.action, [], otherSurface),
+      `Continue this incident in ${primary.surface[0]!.toUpperCase()}${primary.surface.slice(1)}.`,
+      `${entry.scenarioId} primary navigation cue`,
+    )
+    assert.equal(nextActionNavigationHint(entry.action, [], primary.surface), null)
+    assert.equal(nextActionNavigationHint(entry.action, [primary.id], otherSurface), null)
+  }
+})
+
 test('every scenario has unique native interactions linked to each action step and authored wrong choices', () => {
   const interactionIds = new Set<string>()
   for (const entry of SCENARIO_REGISTRY) {
     const correctInteractions = entry.action.interactions.filter(interaction => interaction.classification === 'correct')
     const incorrectInteractions = entry.action.interactions.filter(interaction => interaction.classification === 'incorrect')
 
-    assert.equal(correctInteractions.length, entry.action.steps.length, entry.scenarioId)
+    assert.ok(correctInteractions.length >= entry.action.steps.length, entry.scenarioId)
     assert.ok(incorrectInteractions.length > 0, entry.scenarioId)
     for (const step of entry.action.steps) {
       assert.equal(correctInteractions.filter(interaction => interaction.stepId === step.id).length, 1, `${entry.scenarioId} ${step.id}`)
@@ -102,6 +166,11 @@ test('every scenario has unique native interactions linked to each action step a
       }
     }
   }
+  assert.equal(
+    SCENARIO_REGISTRY.flatMap(entry => entry.action.interactions).some(interaction => interaction.actionType === 'cancelTransfer'),
+    false,
+    'the catalog never offers cancellation when no pending transfer is modeled',
+  )
 })
 
 test('search interactions return contextual local outcomes for the seven incomplete scenarios', () => {

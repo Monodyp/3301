@@ -29,6 +29,7 @@ import { loadStoredParticipant } from './event/participant'
 import { useParticipantRunSync } from './event/useParticipantRunSync'
 import { NARRATIVE_CONTENT, hasPresented } from './game/narrative'
 import { OrganizerDashboard } from './components/admin/OrganizerDashboard'
+import { nextActionNavigationHint } from './components/applications/phoneInteractionUtils'
 
 const initialUnread: Record<AppId, number> = {
   messages: 2, social: 1, email: 2, browser: 0, contacts: 0, calls: 1, wallet: 0, settings: 0,
@@ -50,7 +51,9 @@ function App() {
       : 'local'
   })
   const [eventRun, setEventRun] = useState(() => Boolean(loadStoredParticipant()?.eventRunStarted))
-  const [eventPlayerName, setEventPlayerName] = useState(() => loadStoredParticipant()?.nickname ?? 'Player')
+  const [eventPlayerName, setEventPlayerName] = useState(
+    () => loadStoredParticipant()?.nickname ?? '',
+  )
   const [selectedCharacter, setSelectedCharacter] = useState(
     () => new URLSearchParams(window.location.search).get('character')?.toLowerCase() === 'rafa' ? 'rafa' : 'mika',
   )
@@ -87,6 +90,27 @@ function App() {
     ? game.encounter?.characterId ?? game.storyCharacter?.id
     : selectedCharacter ?? game.storyCharacter?.id
   const characterData = getCharacterPhoneData(phoneCharacterId)
+  const completedScenarioInteractions = activeScenarioId
+    ? game.state.performedPhoneInteractions[activeScenarioId] ?? []
+    : []
+  const investigationNarrativeRead = game.scenario?.narrativeContent.every(content =>
+    game.state.narrative.presentedNarrative.includes(content.id),
+  ) ?? false
+  const navigationSurface = incomingCall ? 'calls' : openedApp
+  const hasInspectedScenarioEvidence = game.encounter?.artifacts.some(artifact =>
+    game.state.inspectedArtifacts.includes(artifact.id),
+  ) ?? false
+  const scenarioGuidanceAction = isEventMode
+    && game.state.phase === 'INVESTIGATION'
+    && investigationNarrativeRead
+    ? game.resolutionAction
+    : null
+  const scenarioNavigationHint = scenarioGuidanceAction && hasInspectedScenarioEvidence
+    ? nextActionNavigationHint(scenarioGuidanceAction.action, completedScenarioInteractions, navigationSurface)
+    : null
+  const scenarioContextHint = scenarioGuidanceAction?.action.contextHint ?? null
+  const scenarioPrompt = scenarioNavigationHint ?? scenarioContextHint
+  const scenarioNavigationKey = `${activeScenarioId ?? ''}:${completedScenarioInteractions.length}:${navigationSurface ?? 'home'}`
 
   useEffect(() => {
     setStage(game.horrorStage)
@@ -284,12 +308,12 @@ function App() {
       {mode === 'event' ? (
         <JoinSessionScreen
           savedEventRunId={game.state.runMode === 'event' ? game.state.eventRunId : null}
-          onBeginRun={run => {
+          onBeginRun={(run, nickname) => {
             const resume = game.state.runMode === 'event'
               && game.state.eventRunId === run.id
               && game.state.encounterQueue.length === run.scenarioIds.length
               && game.state.encounterQueue.every((id, index) => id === run.scenarioIds[index])
-            setEventPlayerName(loadStoredParticipant()?.nickname ?? 'Player')
+            setEventPlayerName(nickname)
             setEventRun(true)
             setMode('playing')
             if (resume) {
@@ -323,7 +347,7 @@ function App() {
           <p>{isEventMode ? 'EVENT PLAYER' : 'YOU ARE'}</p>
           <h1>{(isEventMode ? eventPlayerName : characterData.profile.name).toUpperCase()}</h1>
           <span>{isEventMode
-            ? `STORY CONTEXT · ${characterData.profile.name} · ${characterData.profile.location}`
+            ? 'YOUR DEVICE · SESSION ACTIVE'
             : `${characterData.profile.location} · 11:47 PM`}</span>
           {!isEventMode && (
             <div className="character-picker" aria-label="Character selection">
@@ -343,6 +367,7 @@ function App() {
         <PhoneShell
           simulatedTime="11:47"
           playerName={isEventMode ? eventPlayerName : undefined}
+          evidenceProgress={game.evidenceProgress}
           onBack={() => openedApp ? setOpenedApp(null) : undefined}
           onHome={() => { setOpenedApp(null); setIncomingCall(false) }}
           horrorStage={horror.stage}
@@ -358,7 +383,24 @@ function App() {
               setOpeningSequence(false)
               game.actions.enterPhone()
             }} />
-          ) : openedApp || incomingCall ? renderApp() : <HomeScreen openApp={openApp} unread={unread} data={characterData} />}
+          ) : openedApp || incomingCall ? (
+            <>
+              {renderApp()}
+              {scenarioPrompt && (
+                <aside key={scenarioNavigationKey} className="scenario-navigation-hint transient-context" role="status">
+                  {game.encounter?.title} · {scenarioPrompt}
+                </aside>
+              )}
+            </>
+          ) : (
+            <HomeScreen
+              openApp={openApp}
+              unread={unread}
+              data={characterData}
+              navigationHint={scenarioPrompt}
+              navigationHintKey={scenarioNavigationKey}
+            />
+          )}
           {!isEventMode && !openingSequence && game.state.phase === 'CHARACTER_ASSIGNMENT' && (
             <aside className="character-assignment" role="dialog" aria-label="Character assignment">
               <span>Character assigned</span>

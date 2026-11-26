@@ -7,6 +7,7 @@ interface ApiError extends Error {
 }
 
 let adminClient: SupabaseClient | undefined
+let joinRateLimitHmacKey: CryptoKey | undefined
 
 function apiError(code: string, status: number): ApiError {
   return Object.assign(new Error(code), { code, status })
@@ -30,6 +31,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return typeof value === 'string'
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function isJoinCode(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}$/.test(value)
 }
 
 function cleanText(value: unknown, min: number, max: number): string | null {
@@ -69,6 +74,136 @@ async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function getClientIp(request: Request): string {
+  // Supabase's gateway supplies the observed client address as the first forwarded value.
+  const forwardedFor = request.headers.get('x-forwarded-for')
+  const candidate = forwardedFor?.split(',')[0]?.trim()
+  if (!candidate || candidate.length > 64 || candidate.includes('%')) {
+    throw apiError('client_ip_unavailable', 503)
+  }
+
+  const ipv4Octets = candidate.split('.')
+  if (ipv4Octets.length === 4 && ipv4Octets.every(octet => /^\d{1,3}$/.test(octet))) {
+    const values = ipv4Octets.map(Number)
+    if (values.every(value => value >= 0 && value <= 255)) {
+      return values.join('.')
+    }
+  }
+
+  try {
+    const parsed = new URL(`http://[${candidate}]/`)
+    if (parsed.hostname.startsWith('[') && parsed.hostname.endsWith(']')) {
+      return parsed.hostname.toLowerCase()
+    }
+  } catch {
+    throw apiError('client_ip_unavailable', 503)
+  }
+
+  throw apiError('client_ip_unavailable', 503)
+}
+
+async function getJoinRateLimitHmacKey(): Promise<CryptoKey> {
+  if (joinRateLimitHmacKey) return joinRateLimitHmacKey
+
+  const secret = Deno.env.get('JOIN_RATE_LIMIT_HMAC_KEY')
+  if (!secret || !/^[0-9a-f]{64}$/i.test(secret)) {
+    throw apiError('join_rate_limiter_unavailable', 503)
+  }
+  const keyBytes = new Uint8Array(secret.match(/.{2}/g)!.map(byte => Number.parseInt(byte, 16)))
+  joinRateLimitHmacKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  return joinRateLimitHmacKey
+}
+
+async function hmacIdentifier(key: CryptoKey, namespace: string, value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(`${namespace}:${value}`)
+  const digest = await crypto.subtle.sign('HMAC', key, bytes)
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+async function recordJoinCodeAttempt(
+  client: SupabaseClient,
+  attemptId: string,
+  clientHash: string,
+  codeHash: string,
+  joinCode: string | null,
+): Promise<{ allowed: boolean; failureRecorded: boolean }> {
+  const { data, error } = await client.rpc('record_event_join_code_attempt', {
+    p_attempt_id: attemptId,
+    p_client_hash: clientHash,
+    p_code_hash: codeHash,
+    p_join_code: joinCode,
+  })
+  if (error) throw apiError('join_rate_limiter_unavailable', 503)
+  const result = Array.isArray(data) ? data[0] : data
+  if (!isRecord(result)
+    || typeof result.allowed !== 'boolean'
+    || typeof result.failure_recorded !== 'boolean') {
+    throw apiError('join_rate_limiter_unavailable', 503)
+  }
+  return { allowed: result.allowed, failureRecorded: result.failure_recorded }
+}
+
+function isPublicJoinCodeAttempt(body: Record<string, unknown>): boolean {
+  return body.action === 'join'
+    || (body.action === 'lookup' && body.joinCode !== undefined)
+}
+
+function isFailedJoinCodeAttempt(error: unknown): boolean {
+  return isRecord(error)
+    && typeof error.status === 'number'
+    && error.status >= 400
+    && error.status < 500
+}
+
+function hideJoinCodeAvailability(error: unknown): unknown {
+  if (!isRecord(error) || typeof error.code !== 'string') return error
+  if ([
+    'session_code_unavailable',
+    'session_not_found',
+    'session_not_open',
+    'session_full',
+  ].includes(error.code)) {
+    return apiError('session_code_unavailable', 404)
+  }
+  return error
+}
+
+async function handleRateLimitedJoinCodeAttempt(
+  request: Request,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const client = getAdminClient()
+  const ip = getClientIp(request)
+  const key = await getJoinRateLimitHmacKey()
+  const codeValue = isJoinCode(body.joinCode) ? body.joinCode : '<invalid-code>'
+  const [clientHash, codeHash] = await Promise.all([
+    hmacIdentifier(key, 'client-ip', ip),
+    hmacIdentifier(key, 'join-code', codeValue),
+  ])
+  const attemptId = crypto.randomUUID()
+  const joinCode = isJoinCode(body.joinCode) ? body.joinCode : null
+  let rateLimit = await recordJoinCodeAttempt(client, attemptId, clientHash, codeHash, joinCode)
+  if (!rateLimit.allowed) throw apiError('join_temporarily_unavailable', 429)
+
+  let result: unknown
+  try {
+    result = await handleAction(request, body)
+  } catch (error) {
+    if (isFailedJoinCodeAttempt(error) && !rateLimit.failureRecorded) {
+      rateLimit = await recordJoinCodeAttempt(client, attemptId, clientHash, codeHash, joinCode)
+      if (!rateLimit.allowed) throw apiError('join_temporarily_unavailable', 429)
+    }
+    throw hideJoinCodeAvailability(error)
+  }
+  return result
 }
 
 async function requireAdminSession(request: Request, client: SupabaseClient): Promise<void> {
@@ -117,6 +252,10 @@ function mapDatabaseError(message: string): ApiError {
   if (value.includes('session_full')) return apiError('session_full', 409)
   if (value.includes('session_not_open')) return apiError('session_not_open', 409)
   if (value.includes('session_not_active')) return apiError('session_not_active', 409)
+  if (value.includes('join_code_space_exhausted')) return apiError('join_code_space_exhausted', 503)
+  if (value.includes('join_code_immutable') || value.includes('join_code_managed')) {
+    return apiError('database_operation_failed', 500)
+  }
   if (value.includes('invalid_status_transition')) return apiError('invalid_status_transition', 409)
   if (value.includes('invalid_session_update')) return apiError('invalid_session_update', 400)
   if (value.includes('player_completed')) return apiError('player_completed', 409)
@@ -133,11 +272,12 @@ function mapDatabaseError(message: string): ApiError {
 }
 
 function sessionSummary(
-  session: { id: string; name: string; status: SessionStatus; max_players: number },
+  session: { id: string; join_code: string; name: string; status: SessionStatus; max_players: number },
   playerCount: number,
 ) {
   return {
     id: session.id,
+    joinCode: session.join_code,
     name: session.name,
     status: session.status,
     playerCount,
@@ -148,7 +288,7 @@ function sessionSummary(
 async function getSessionSummary(client: SupabaseClient, sessionId: string) {
   const { data: session, error } = await client
     .from('event_sessions')
-    .select('id, name, status, max_players')
+    .select('id, join_code, name, status, max_players')
     .eq('id', sessionId)
     .maybeSingle()
   if (error) throw mapDatabaseError(error.message)
@@ -160,6 +300,21 @@ async function getSessionSummary(client: SupabaseClient, sessionId: string) {
     .eq('session_id', sessionId)
   if (countError) throw mapDatabaseError(countError.message)
   return sessionSummary(session, count ?? 0)
+}
+
+async function getJoinableSessionByCode(client: SupabaseClient, joinCode: string) {
+  const { data: session, error } = await client
+    .from('event_sessions')
+    .select('id')
+    .eq('join_code', joinCode)
+    .maybeSingle()
+  if (error) throw mapDatabaseError(error.message)
+  if (!session) throw apiError('session_code_unavailable', 404)
+
+  const summary = await getSessionSummary(client, session.id)
+  if (summary.status !== 'waiting') throw apiError('session_not_open', 409)
+  if (summary.playerCount >= summary.maxPlayers) throw apiError('session_full', 409)
+  return session
 }
 
 async function getParticipantRun(client: SupabaseClient, sessionId: string, playerId: string) {
@@ -193,6 +348,11 @@ async function getParticipantRun(client: SupabaseClient, sessionId: string, play
 }
 
 async function lookupSession(client: SupabaseClient, body: Record<string, unknown>) {
+  if (body.joinCode !== undefined) {
+    if (!isJoinCode(body.joinCode)) throw apiError('invalid_join_code', 400)
+    const session = await getJoinableSessionByCode(client, body.joinCode)
+    return { session: await getSessionSummary(client, session.id) }
+  }
   if (!isUuid(body.sessionId)) throw apiError('invalid_session_id', 400)
   const session = await getSessionSummary(client, body.sessionId)
   const response: Record<string, unknown> = { session }
@@ -221,11 +381,13 @@ async function lookupSession(client: SupabaseClient, body: Record<string, unknow
 }
 
 async function joinSession(client: SupabaseClient, body: Record<string, unknown>) {
-  const sessionId = body.sessionId
+  const joinCode = body.joinCode
   const registrationId = body.registrationId
   const nickname = cleanText(body.nickname, 1, 32)
-  if (!isUuid(sessionId)) throw apiError('invalid_session_id', 400)
+  if (!isJoinCode(joinCode)) throw apiError('invalid_join_code', 400)
   if (!isUuid(registrationId) || !nickname) throw apiError('invalid_registration', 400)
+  const resolvedSession = await getJoinableSessionByCode(client, joinCode)
+  const sessionId = resolvedSession.id
 
   const { data, error } = await client.rpc('register_event_player', {
     p_session_id: sessionId,
@@ -473,7 +635,7 @@ async function createSession(client: SupabaseClient, body: Record<string, unknow
   const { data, error } = await client
     .from('event_sessions')
     .insert({ name, max_players: maxPlayers })
-    .select('id, name, status, max_players')
+    .select('id, join_code, name, status, max_players')
     .single()
   if (error) throw mapDatabaseError(error.message)
   return { session: sessionSummary(data, 0) }
@@ -582,7 +744,7 @@ async function adminOverview(client: SupabaseClient) {
 async function listSessions(client: SupabaseClient) {
   const { data, error } = await client
     .from('event_sessions')
-    .select('id,name,status,created_at,started_at,ended_at,max_players')
+    .select('id,join_code,name,status,created_at,started_at,ended_at,max_players')
     .order('created_at', { ascending: false })
   if (error) throw mapDatabaseError(error.message)
   const sessions = data ?? []
@@ -985,7 +1147,10 @@ Deno.serve(async request => {
   }
 
   try {
-    return Response.json({ data: await handleAction(request, body) }, { headers })
+    const data = isPublicJoinCodeAttempt(body)
+      ? await handleRateLimitedJoinCodeAttempt(request, body)
+      : await handleAction(request, body)
+    return Response.json({ data }, { headers })
   } catch (error) {
     if (isRecord(error) && typeof error.status === 'number' && typeof error.code === 'string') {
       const api = error as ApiError

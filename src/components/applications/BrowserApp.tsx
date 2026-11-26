@@ -63,6 +63,9 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
   ]
   const selected = pages.find(page => page.url === selectedUrl)
   const browserClueArtifacts = encounter?.artifacts.filter(artifact => artifact.app === 'browser') ?? []
+  const installerVerification = encounter?.id === 'RF-O2'
+    ? browserClueArtifacts.find(artifact => artifact.id === 'RF-O2-ART-02')
+    : undefined
   const contextArtifact = browserClueArtifacts[0]
     ?? encounter?.artifacts.find(artifact => artifact.app === 'social')
   const targetFor = (pageId: string) => encounter && pageId === encounter.id ? PHONE_TARGETS.incident(encounter.id) : PHONE_TARGETS.ambient('browser', pageId)
@@ -73,6 +76,7 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
   ))
   const searches = interactionsFor(game, 'browser', 'search')
   const links = interactionsFor(game, 'browser', 'link')
+  const browserMenuActions = interactionsFor(game, 'browser', 'menu-item')
   const openPage = (page: { id: string; url: string }) => {
     setSelectedUrl(page.url)
     onPhoneEvent?.({ kind: 'CONVERSATION_OPENED', app: 'browser', target: targetFor(page.id) })
@@ -112,6 +116,16 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
             <p className="page-subtitle">{selected.url}</p>
             <div className="search-result"><strong>{selected.subtitle}</strong><p>{selected.body}</p></div>
             {selected.suspicious && <button className="browser-warning">Suspicious local preview — no credentials collected</button>}
+            {selected.url === 'lab.sanestrella.local' && installerVerification && (
+              <section className="installer-test-results" aria-label="Installer test results">
+                <span>Program verification</span>
+                <details>
+                  <summary>Review test results</summary>
+                  <p data-clue-target={installerVerification.id}>{installerVerification.detail}</p>
+                </details>
+                <p className="installer-results-hint">This directory cannot approve an attachment. Check another phone app before returning to the recruiter’s email.</p>
+              </section>
+            )}
             <ReadMarker key={targetFor(selected.id)} onRead={() => onPhoneEvent?.({ kind: 'MESSAGE_READ', app: 'browser', target: targetFor(selected.id) })} />
             <button className="detail-back" onClick={() => setSelectedUrl(null)}><ArrowLeft size={16} /> Search results</button>
             </section>
@@ -148,6 +162,13 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
                 </ScenarioPhoneInteraction>
               )}
             </section>}
+            {searchedQuery && searchOutcome?.kind !== 'miss' && browserMenuActions.length > 0 && (
+              <div className="browser-native-actions" aria-label="Browser safety actions">
+                {browserMenuActions.map(interaction => (
+                  <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} />
+                ))}
+              </div>
+            )}
             <div className="page-mark">N</div>
             <h1>{data?.profile.location ?? 'Northbridge'}</h1>
             <p className="page-subtitle">Fictional local directory</p>

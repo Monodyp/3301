@@ -1,6 +1,28 @@
 import type { Game } from '../../game/useGame'
-import type { PhoneSurface, ScenarioPhoneInteraction } from '../../game/scenarioRegistry'
+import type { PhoneSurface, ResolutionAction, ScenarioPhoneInteraction } from '../../game/scenarioRegistry'
 import type { Artifact } from '../../game/types'
+import type { AppId } from '../../types'
+
+export const PHONE_SURFACE_LABELS: Record<PhoneSurface, string> = {
+  messages: 'Messages',
+  social: 'Social',
+  email: 'Email',
+  browser: 'Browser',
+  contacts: 'Contacts',
+  calls: 'Calls',
+  wallet: 'Wallet',
+  settings: 'Settings',
+}
+
+export function nextActionNavigationHint(
+  action: Pick<ResolutionAction, 'primaryInteractionId' | 'interactions'>,
+  completedInteractionIds: readonly string[],
+  currentSurface: AppId | null,
+): string | null {
+  const primary = action.interactions.find(interaction => interaction.id === action.primaryInteractionId)
+  if (!primary || completedInteractionIds.includes(primary.id) || primary.surface === currentSurface) return null
+  return `Continue this incident in ${PHONE_SURFACE_LABELS[primary.surface]}.`
+}
 
 export type TrustedSearchOutcome =
   | { kind: 'miss'; title: string; detail: string }
@@ -55,12 +77,15 @@ export function availablePhoneInteractions(game: Game, surface: PhoneSurface): S
   ) return []
 
   const completed = game.state.performedPhoneInteractions[scenarioId] ?? []
-  const step = entry.action.steps[(game.state.resolutionSteps[scenarioId] ?? []).length]
   return entry.action.interactions.filter(interaction =>
     interaction.surface === surface
     && !completed.includes(interaction.id)
-    && (interaction.classification === 'incorrect' || interaction.stepId === step?.id),
   )
+}
+
+export function primaryInteractionFor(game: Game, surface: PhoneSurface): ScenarioPhoneInteraction | undefined {
+  const primaryId = game.resolutionAction?.action.primaryInteractionId
+  return availablePhoneInteractions(game, surface).find(interaction => interaction.id === primaryId)
 }
 
 export function interactionsFor(

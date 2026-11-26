@@ -258,7 +258,7 @@ export interface ResolutionActionFeedback {
   scenarioId: string
   actionId: string
   stepId: string
-  outcome: 'step-completed' | 'resolved' | 'rejected'
+  outcome: 'step-completed' | 'supporting' | 'resolved' | 'rejected'
   message: string
   corruptionLevel?: number
 }

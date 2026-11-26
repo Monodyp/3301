@@ -11,6 +11,7 @@ import { CHARACTERS } from '../src/game/content/index.ts'
 import { ENCOUNTER_NARRATIVES } from '../src/game/content/scenarios.ts'
 import { currentEncounter, gameReducer, initialGameState } from '../src/game/engine.ts'
 import { CLUE_DWELL_MS } from '../src/game/narrative.ts'
+import { deriveGameView } from '../src/game/useGame.ts'
 import type { GameState } from '../src/game/types.ts'
 import { T0, findEvidence, openIncident, run, takeInNarrative } from './support/play.ts'
 
@@ -53,6 +54,31 @@ test('4. clue discovery is once-only and independent of decision availability', 
     assert.deepEqual([...viaViewing.inspectedArtifacts].sort(), [...viaInspect.inspectedArtifacts].sort())
     assert.equal(viaViewing.phase, 'INVESTIGATION', 'the decision is offered, not opened')
   }
+})
+
+test('evidence progress reflects discovered evidence for the current encounter only', () => {
+  const started = run(
+    initialGameState(),
+    { type: 'START_RUN', seed: 4242, now: T0, characterId: 'mika' },
+    { type: 'ENTER_PHONE' },
+    { type: 'TRIGGER_ENCOUNTER' },
+  )
+  const investigating = takeInNarrative(openIncident(started))
+  const encounter = currentEncounter(investigating)!
+  const availableEvidence = encounter.artifacts
+
+  assert.equal(availableEvidence.length, 3)
+  assert.deepEqual(deriveGameView(investigating).evidenceProgress, { discovered: 0, total: 3 })
+
+  const afterDiscovery = run(investigating, {
+    type: 'INSPECT_ARTIFACT',
+    artifactId: availableEvidence[0]!.id,
+    now: T0 + CLUE_DWELL_MS + 1,
+  })
+  assert.deepEqual(deriveGameView(afterDiscovery).evidenceProgress, { discovered: 1, total: 3 })
+
+  const nextEncounter = { ...afterDiscovery, currentEncounterIndex: afterDiscovery.currentEncounterIndex + 1 }
+  assert.deepEqual(deriveGameView(nextEncounter).evidenceProgress, { discovered: 0, total: 3 })
 })
 
 test('5. character narrative content is unchanged', () => {

@@ -7,7 +7,13 @@ import type { AppId } from '../../types'
 import { AppIcon } from './AppIcon'
 import type { CharacterPhoneData } from '../../data/characterData'
 
-export function HomeScreen({ openApp, unread, data }: { openApp: (id: AppId) => void; unread: Record<AppId, number>; data: CharacterPhoneData }) {
+export function HomeScreen({ openApp, unread, data, navigationHint, navigationHintKey }: {
+  openApp: (id: AppId) => void
+  unread: Record<AppId, number>
+  data: CharacterPhoneData
+  navigationHint?: string | null
+  navigationHintKey?: string
+}) {
   const apps = [
     { id: 'messages' as const, label: 'Messages', icon: MessageCircle, color: 'linear-gradient(145deg,#69b9ed,#4d86ca)' },
     { id: 'social' as const, label: 'Social', icon: Users, color: 'linear-gradient(145deg,#c8b2eb,#8f7eb3)' },
@@ -35,6 +41,11 @@ export function HomeScreen({ openApp, unread, data }: { openApp: (id: AppId) => 
         </div>
         <div className="date-block"><span>MON</span><strong>24</strong></div>
       </div>
+      {navigationHint && (
+        <p key={navigationHintKey} className="home-scenario-hint transient-context" role="status">
+          {navigationHint}
+        </p>
+      )}
       <div className="app-grid">
         {apps.map(app => (
           <AppIcon key={app.id} icon={app.icon} label={app.label} color={app.color}

@@ -193,52 +193,55 @@ test('all 16 assigned scenarios resolve through their own registry interactions'
     const entry = getScenarioDefinition(scenarioId)!
     let state = readyEventScenario(startedEventRun(assignment))
 
-    for (const step of entry.action.steps) {
-      const interaction = entry.action.interactions.find(item => item.classification === 'correct' && item.stepId === step.id)
-      assert.ok(interaction, `${scenarioId} ${step.id} has a native interaction`)
+    for (const interaction of entry.action.interactions.filter(item => item.classification === 'correct')) {
       const available = availablePhoneInteractions({
         state,
         encounter: currentEncounter(state),
         resolutionAction: entry,
-      }, step.surface)
+      }, interaction.surface)
       assert.ok(available.some(item => item.id === interaction.id), `${scenarioId} ${interaction.id} is exposed in its native app`)
+    }
+    for (const surface of new Set(entry.action.interactions.map(item => item.surface))) {
+      const available = availablePhoneInteractions({
+        state,
+        encounter: currentEncounter(state),
+        resolutionAction: entry,
+      }, surface)
       assert.ok(
         entry.action.interactions
-          .filter(item => item.classification === 'incorrect' && item.surface === step.surface)
+          .filter(item => item.classification === 'incorrect' && item.surface === surface)
           .every(item => available.some(candidate => candidate.id === item.id)),
         `${scenarioId} harmful alternatives are available in their native app`,
       )
-      const parameters = interaction.expectedQuery
-        ? { query: interaction.expectedQuery }
-        : interaction.expectedContact
-          ? { contactName: interaction.expectedContact }
-          : undefined
-      if (interaction.expectedQuery || interaction.expectedContact) {
-        const rejected = gameReducer(state, {
-          type: 'PERFORM_PHONE_INTERACTION',
-          scenarioId,
-          interactionId: interaction.id,
-          surface: interaction.surface,
-          parameters: interaction.expectedQuery ? { query: 'unrelated search' } : { contactName: 'Untrusted contact' },
-          now: T0 + 9,
-        })
-        assert.equal(rejected, state, `${scenarioId} validates required interaction parameters`)
-      }
-      state = gameReducer(state, {
+    }
+    const primary = entry.action.interactions.find(item => item.id === entry.action.primaryInteractionId)!
+    const parameters = primary.expectedQuery
+      ? { query: primary.expectedQuery }
+      : primary.expectedContact
+        ? { contactName: primary.expectedContact }
+        : undefined
+    if (primary.expectedQuery || primary.expectedContact) {
+      const rejected = gameReducer(state, {
         type: 'PERFORM_PHONE_INTERACTION',
         scenarioId,
-        interactionId: interaction.id,
-        surface: interaction.surface,
-        parameters,
-        now: T0 + 10,
+        interactionId: primary.id,
+        surface: primary.surface,
+        parameters: primary.expectedQuery ? { query: 'unrelated search' } : { contactName: 'Untrusted contact' },
+        now: T0 + 9,
       })
+      assert.equal(rejected, state, `${scenarioId} validates required interaction parameters`)
     }
+    state = gameReducer(state, {
+      type: 'PERFORM_PHONE_INTERACTION',
+      scenarioId,
+      interactionId: primary.id,
+      surface: primary.surface,
+      parameters,
+      now: T0 + 10,
+    })
 
     assert.ok(state.completedEncounters.includes(scenarioId), `${scenarioId} resolves`)
-    assert.deepEqual(
-      state.performedPhoneInteractions[scenarioId],
-      entry.action.interactions.filter(item => item.classification === 'correct').map(item => item.id),
-    )
+    assert.deepEqual(state.performedPhoneInteractions[scenarioId], [primary.id])
   }
 })
 
@@ -250,8 +253,11 @@ test('harmful native interactions escalate corruption, persist, and cannot resol
   const wrongInteraction = wrongInteractions[0]!
   const secondWrongInteraction = wrongInteractions[1]!
   const correctInteractions = entry.action.interactions.filter(item => item.classification === 'correct')
-  const correctFirstStep = correctInteractions[0]!
-  const stabilizingInteraction = correctInteractions[1]!
+  const primaryInteraction = correctInteractions.find(item => item.id === entry.action.primaryInteractionId)!
+  const correctFirstStep = correctInteractions.find(item =>
+    item.id !== primaryInteraction.id && !item.stabilizes && !item.expectedQuery && !item.expectedContact,
+  )!
+  const stabilizingInteraction = correctInteractions.find(item => item.stabilizes)!
   let state = readyEventScenario(startedEventRun(assignment))
 
   const wrongAction = {
@@ -304,8 +310,11 @@ test('harmful native interactions escalate corruption, persist, and cannot resol
   })
   assert.equal(state.corruptionByScenario[scenarioId], 3, 'a correct step stabilizes incrementally rather than clearing corruption')
 
-  for (const step of entry.action.steps.slice(2)) {
-    const interaction = entry.action.interactions.find(item => item.classification === 'correct' && item.stepId === step.id)!
+  for (const step of entry.action.steps) {
+    const interaction = entry.action.interactions.find(item =>
+      item.classification === 'correct' && item.stepId === step.id && item.id !== primaryInteraction.id,
+    )
+    if (!interaction || interaction.id === correctFirstStep.id || interaction.id === stabilizingInteraction.id) continue
     state = gameReducer(state, {
       type: 'PERFORM_PHONE_INTERACTION',
       scenarioId,
@@ -319,6 +328,13 @@ test('harmful native interactions escalate corruption, persist, and cannot resol
       now: T0 + 40,
     })
   }
+  state = gameReducer(state, {
+    type: 'PERFORM_PHONE_INTERACTION',
+    scenarioId,
+    interactionId: primaryInteraction.id,
+    surface: primaryInteraction.surface,
+    now: T0 + 45,
+  })
   assert.ok(state.completedEncounters.includes(scenarioId))
   const resolvedState = state
   state = gameReducer(state, { ...wrongAction, now: T0 + 50 })
@@ -344,6 +360,96 @@ test('all 16 scenario actions resolve only their assigned encounter without requ
     assert.ok(resolved.playerScore >= 100, scenarioId)
     assert.equal(resolved.resolutionSteps[scenarioId]?.length, getScenarioDefinition(scenarioId)?.action.steps.length, scenarioId)
   }
+})
+
+test('native primary actions resolve each scenario and require no supporting action or evidence', () => {
+  for (const scenarioId of BACKEND_SCENARIO_IDS) {
+    const assignment = [scenarioId, ...BACKEND_SCENARIO_IDS.filter(id => id !== scenarioId).slice(0, 4)]
+    const state = readyEventScenario(startedEventRun(assignment))
+    const entry = getScenarioDefinition(scenarioId)!
+    const primary = entry.action.interactions.find(item => item.id === entry.action.primaryInteractionId)!
+    const parameters = primary.expectedQuery
+      ? { query: primary.expectedQuery }
+      : primary.expectedContact
+        ? { contactName: primary.expectedContact }
+        : undefined
+    const resolved = gameReducer(state, {
+      type: 'PERFORM_PHONE_INTERACTION',
+      scenarioId,
+      interactionId: primary.id,
+      surface: primary.surface,
+      parameters,
+      now: T0 + 10,
+    })
+
+    assert.equal(resolved.phase, 'CONSEQUENCE', scenarioId)
+    assert.deepEqual(resolved.completedEncounters, [scenarioId], scenarioId)
+    assert.deepEqual(resolved.inspectedArtifacts, [], scenarioId)
+    assert.equal(resolved.decisionHistory[0]?.score.clueBonus, 0, scenarioId)
+    assert.deepEqual(resolved.performedPhoneInteractions[scenarioId], [primary.id], scenarioId)
+  }
+})
+
+test('supporting protective actions are optional and cannot resolve an incident', () => {
+  const scenarioId = 'MK-A3'
+  const assignment = [scenarioId, ...BACKEND_SCENARIO_IDS.filter(id => id !== scenarioId).slice(0, 4)]
+  const state = readyEventScenario(startedEventRun(assignment))
+  const entry = getScenarioDefinition(scenarioId)!
+  const support = entry.action.interactions.find(item => item.id === 'mk-a3.support.deleteEmail')!
+  const afterSupport = gameReducer(state, {
+    type: 'PERFORM_PHONE_INTERACTION',
+    scenarioId,
+    interactionId: support.id,
+    surface: support.surface,
+    now: T0 + 10,
+  })
+
+  test('email delete and block are separate optional actions with distinct feedback', () => {
+    const scenarioId = 'MK-A3'
+    const assignment = [scenarioId, ...BACKEND_SCENARIO_IDS.filter(id => id !== scenarioId).slice(0, 4)]
+    const entry = getScenarioDefinition(scenarioId)!
+    const optionalActions = ['deleteEmail', 'blockEmailSender'].map(actionType =>
+      entry.action.interactions.find(item => item.actionType === actionType)!,
+    )
+    const messages = optionalActions.map((interaction, index) => {
+      const state = readyEventScenario(startedEventRun(assignment))
+      const afterAction = gameReducer(state, {
+        type: 'PERFORM_PHONE_INTERACTION',
+        scenarioId,
+        interactionId: interaction.id,
+        surface: interaction.surface,
+        now: T0 + index + 10,
+      })
+      assert.equal(afterAction.phase, 'INVESTIGATION')
+      assert.deepEqual(afterAction.completedEncounters, [])
+      assert.deepEqual(afterAction.performedPhoneInteractions[scenarioId], [interaction.id])
+      return afterAction.resolutionActionFeedback?.message
+    })
+
+    assert.notEqual(messages[0], messages[1])
+    assert.match(messages[0] ?? '', /removes the email/i)
+    assert.match(messages[1] ?? '', /prevents further email/i)
+  })
+
+  assert.equal(afterSupport.phase, 'INVESTIGATION')
+  assert.deepEqual(afterSupport.completedEncounters, [])
+  assert.deepEqual(afterSupport.decisionHistory, [])
+  assert.deepEqual(afterSupport.resolutionSteps, {})
+  assert.deepEqual(afterSupport.inspectedArtifacts, [])
+  assert.deepEqual(afterSupport.performedPhoneInteractions[scenarioId], [support.id])
+  assert.equal(afterSupport.resolutionActionFeedback?.outcome, 'supporting')
+  assert.match(afterSupport.resolutionActionFeedback?.message ?? '', /does not resolve the incident/i)
+
+  const primary = entry.action.interactions.find(item => item.id === entry.action.primaryInteractionId)!
+  const resolved = gameReducer(afterSupport, {
+    type: 'PERFORM_PHONE_INTERACTION',
+    scenarioId,
+    interactionId: primary.id,
+    surface: primary.surface,
+    now: T0 + 20,
+  })
+  assert.equal(resolved.phase, 'CONSEQUENCE')
+  assert.deepEqual(resolved.completedEncounters, [scenarioId])
 })
 
 test('event actions can resolve before narrative or evidence investigation', () => {

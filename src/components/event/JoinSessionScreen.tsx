@@ -26,7 +26,10 @@ import { validateScenarioAssignment, type ScenarioId } from '../../game/scenario
 
 interface JoinSessionScreenProps {
   savedEventRunId: string | null
-  onBeginRun: (run: EventParticipantRun & { scenarioIds: ScenarioId[] }) => void
+  onBeginRun: (
+    run: EventParticipantRun & { scenarioIds: ScenarioId[] },
+    nickname: string,
+  ) => void
   onLocalPractice: () => void
 }
 
@@ -201,7 +204,10 @@ export function JoinSessionScreen({
         completionStatus: result.participant.completionStatus,
         run: result.participant.run,
       })
-      onBeginRun({ ...run, scenarioIds: assignment.scenarioIds })
+      onBeginRun(
+        { ...run, scenarioIds: assignment.scenarioIds },
+        participant.nickname,
+      )
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not verify session status.')
     } finally {

@@ -74,17 +74,17 @@ No Supabase project, credentials, or container runtime is required. `npm install
    npx supabase db push
    ```
 
-3. Configure local Function variables by copying `supabase/functions/.env.example` to `supabase/functions/.env` and replacing the organizer token with a random local-only value. For the browser, create a root `.env.local` with the local Supabase URL and publishable key shown by the CLI.
+3. Configure local Function variables by copying `supabase/functions/.env.example` to `supabase/functions/.env`, replacing the organizer token with a random local-only value, and setting `JOIN_RATE_LIMIT_HMAC_KEY` to 64 hexadecimal characters generated from 32 random bytes. For example, `node -p "require('node:crypto').randomBytes(32).toString('hex')"`. Keep this secret server-side and stable; rotating it clears the effective rate-limit history. For the browser, create a root `.env.local` with the local Supabase URL and publishable key shown by the CLI.
 4. Run `npx supabase start` and `npx supabase functions serve session-api` if you want to test the local backend. Local Function testing requires the Supabase CLI and Docker; it is not needed to run or test local practice.
 5. Run `npx supabase test db` to execute the database tests in `supabase/tests/priority5a.test.sql`.
-6. To exercise concurrent API starts, configure `TEST_SUPABASE_URL`, `TEST_SUPABASE_PUBLISHABLE_KEY`, and `TEST_ORGANIZER_ACCESS_TOKEN` for a disposable local Supabase stack. In PowerShell, enable the integration test and run it with:
+6. To exercise API and rate-limit integration, configure `TEST_SUPABASE_URL`, `TEST_SUPABASE_PUBLISHABLE_KEY`, `TEST_SUPABASE_SERVICE_ROLE_KEY`, and `TEST_ORGANIZER_ACCESS_TOKEN` for a disposable local Supabase stack. The service-role key is used only by the test process for direct database RPC assertions; never use a production key. In PowerShell, enable the integration test and run it with:
 
    ```powershell
    $env:RUN_PRIORITY5A_INTEGRATION = '1'
    npm test
    ```
 
-   The integration test creates and resets a session; it does not delete the test session row. Do not point it at a production project.
+   The integration test creates and resets test sessions; it does not delete their rows. Do not point it at a production project.
 7. Verify the migration and functions against local Supabase before using the same workflow with a hosted project.
 
 `supabase/config.toml` identifies the local CLI project. Starting the optional local Supabase stack requires the Supabase CLI and Docker; it is not needed to run or test the game UI.
@@ -94,14 +94,16 @@ No Supabase project, credentials, or container runtime is required. `npm install
 1. Configure a Cloudflare Pages project from the repository. Use Node.js 22.18 or newer, the repository root as the project root, `npm run build` as the build command, and `dist` as the output directory.
 2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` as Pages build environment variables. Production builds default to the event-joining screen; `?mode=local` explicitly opens local practice.
 3. Link the Supabase CLI to the intended project and run `npx supabase db push`.
-4. Set server-only secrets and deploy the function:
+4. Generate `JOIN_RATE_LIMIT_HMAC_KEY` from 32 random bytes, keep it in the server-side secret manager, set the server-only secrets, and deploy the function:
 
    ```sh
-   npx supabase secrets set --project-ref <project-ref> ORGANIZER_ACCESS_TOKEN=<long-random-secret> CORS_ALLOWED_ORIGINS=https://<your-pages-domain>
+   npx supabase secrets set --project-ref <project-ref> ORGANIZER_ACCESS_TOKEN=<long-random-secret> JOIN_RATE_LIMIT_HMAC_KEY=<64-hex-random-secret> CORS_ALLOWED_ORIGINS=https://<your-pages-domain>
    npx supabase functions deploy session-api
    ```
 
-5. Create a session using the organizer-only `create` action and distribute the returned UUID, optionally as `https://<your-pages-domain>/?session=<uuid>`. After participants have joined, call `set-status` with `active`; later call it with `completed`. For example:
+   Public session-code attempts are limited to 120 failures per client IP in 15 minutes and 1,000 in 24 hours, plus 10 failures per code in 15 minutes and 60 in 24 hours. Successful lookups and joins do not consume those failure limits. The function uses the first `X-Forwarded-For` value as documented by Supabase; any self-hosted or custom proxy must overwrite that header with the observed source IP. The database stores only HMAC-derived identifiers and failure timestamps, with expired records removed during later attempts.
+
+5. Create a session using the organizer-only `create` action and distribute the returned four-digit join code or player URL (`https://<your-pages-domain>/?code=<join-code>`). Keep the UUID for organizer and participant-progress operations. After participants have joined, call `set-status` with `active`; later call it with `completed`. For example:
 
    ```sh
    curl --request POST "$SUPABASE_URL/functions/v1/session-api" \
@@ -133,10 +135,11 @@ The `submit-result` contract validates that each result has exactly five unique 
 
 No new frontend environment variable is required for the dashboard. It uses the existing public `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
-The existing hosted Supabase secrets remain:
+The existing hosted Supabase secrets are:
 
 - `ORGANIZER_ACCESS_TOKEN`
 - `CORS_ALLOWED_ORIGINS`
+- `JOIN_RATE_LIMIT_HMAC_KEY`
 
 The Vercel application must not receive `SUPABASE_SERVICE_ROLE_KEY` or `ORGANIZER_ACCESS_TOKEN`.
 

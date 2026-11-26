@@ -223,7 +223,7 @@ function isResolutionActionFeedback(value: unknown): boolean {
     || value.corruptionLevel < 0
     || value.corruptionLevel > 4
   )) return false
-  if (value.outcome !== 'step-completed' && value.outcome !== 'resolved' && value.outcome !== 'rejected') return false
+  if (value.outcome !== 'step-completed' && value.outcome !== 'supporting' && value.outcome !== 'resolved' && value.outcome !== 'rejected') return false
   const entry = getScenarioDefinition(value.scenarioId)
   return entry?.action.id === value.actionId && entry.action.steps.some(step => step.id === value.stepId)
 }

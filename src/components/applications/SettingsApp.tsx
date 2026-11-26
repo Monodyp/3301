@@ -43,6 +43,9 @@ export function SettingsApp({ game, data, accountSecurity, hints = [], completed
         <button className="security-center-toggle" aria-expanded={securityOpen} onClick={() => setSecurityOpen(value => !value)}>
           <strong>Security Center</strong><b className={`security-${securityStatus.toLowerCase().replace(' ', '-')}`}>{securityStatus}</b>
         </button>
+        {!securityOpen && (accountActions.length > 0 || protectionActions.length > 0) && (
+          <p className="security-center-hint">This incident has a related device check in Security Center.</p>
+        )}
         {securityOpen && (
           <div ref={clueRef}>
             <p>{accountSecurity !== undefined ? `Simulated account security: ${accountSecurity}/100` : 'This character uses the shared run security status.'}</p>
@@ -65,8 +68,15 @@ export function SettingsApp({ game, data, accountSecurity, hints = [], completed
             )}
             {accountActions.map(interaction => <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} className="settings-native-action">{interaction.label}</ScenarioPhoneInteraction>)}
             {protectionActions.filter(interaction => interaction.classification === 'correct').map(interaction => (
-              <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} className="settings-protection-toggle" pressed>
-                <ShieldAlert size={18} /><span>Device protection</span><b>On</b>
+              <ScenarioPhoneInteraction
+                key={interaction.id}
+                game={game}
+                interaction={interaction}
+                className="settings-protection-toggle"
+                pressed={interaction.actionType === 'rejectInstallation' ? undefined : true}
+              >
+                <ShieldAlert size={18} /><span>{interaction.label}</span>
+                {interaction.actionType !== 'rejectInstallation' && <b>On</b>}
               </ScenarioPhoneInteraction>
             ))}
             {protectionActions.filter(interaction => interaction.classification === 'incorrect').map(interaction => (

@@ -122,6 +122,11 @@ export function deriveGameView(state: GameState) {
     : undefined
   const correctCount = state.decisionHistory.filter(d => d.correct).length
   const mistakes = state.decisionHistory.length - correctCount
+  const availableEvidence = encounter?.artifacts ?? []
+  const evidenceProgress = {
+    discovered: availableEvidence.filter(artifact => state.inspectedArtifacts.includes(artifact.id)).length,
+    total: availableEvidence.length,
+  }
   const decision = pendingDecision(state)
   const investigating = state.phase === 'INVESTIGATION' || state.phase === 'DECISION'
   const clues: ClueView[] = encounter && investigating
@@ -150,6 +155,7 @@ export function deriveGameView(state: GameState) {
     horrorStage: horrorStageFor(state.completedEncounters.length, mistakes),
     categoryResults: resultsByCategory(state.decisionHistory),
     progress: { done: state.completedEncounters.length, total: state.encounterQueue.length },
+    evidenceProgress,
     completionTime: formatCompletionTime(state.runStartedAt, state.runFinishedAt),
     nextHintAt: nextHintDueAt(state),
     // The active encounter's clues that can be (or have been) discovered, with where each is shown.

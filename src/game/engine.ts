@@ -27,6 +27,7 @@ import { getEncounterNarrative } from './content/scenarios.ts'
 import {
   getScenarioDefinition,
   isScenarioId,
+  PROTECTIVE_ACTION_CATALOG,
   validateScenarioAssignment,
   type PhoneSurface,
   type ResolutionActionId,
@@ -509,34 +510,47 @@ function performPhoneInteraction(
   if (completedInteractions.includes(interaction.id)) return state
 
   if (interaction.classification === 'correct') {
-    const completedSteps = state.resolutionSteps[action.scenarioId] ?? []
-    const nextStep = entry.action.steps[completedSteps.length]
-    if (!nextStep || interaction.stepId !== nextStep.id) return state
-    const progressed = performProtectiveAction(state, {
-      type: 'PERFORM_PROTECTIVE_ACTION',
-      scenarioId: action.scenarioId,
-      actionId: entry.action.id,
-      stepId: nextStep.id,
-      surface: interaction.surface,
-      now: action.now,
-    })
-    if (progressed === state) return state
-
+    const performedPhoneInteractions = {
+      ...state.performedPhoneInteractions,
+      [action.scenarioId]: [...completedInteractions, interaction.id],
+    }
+    if (interaction.id === entry.action.primaryInteractionId) {
+      const narrative = getEncounterNarrative(action.scenarioId)
+      const choice = entry.encounter.choices.find(candidate => candidate.id === entry.action.authoredChoiceId)
+      if (!narrative?.decision || narrative.decision.id !== active.decisionId || !choice?.isCorrect) return state
+      return resolveChoice({
+        ...state,
+        performedPhoneInteractions,
+        resolutionActionFeedback: null,
+        lastProgressAt: action.now,
+      }, entry.encounter, narrative.decision, choice, action.now)
+    }
     const currentCorruption = state.corruptionByScenario[action.scenarioId] ?? 0
     const corruptionLevel = interaction.stabilizes ? Math.max(0, currentCorruption - 1) : currentCorruption
+    const supportingStep = interaction.stepId
+      ? entry.action.steps.find(candidate => candidate.id === interaction.stepId)
+      : undefined
+    const catalogAction = interaction.actionType
+      ? PROTECTIVE_ACTION_CATALOG[interaction.actionType]
+      : undefined
     return {
-      ...progressed,
-      performedPhoneInteractions: {
-        ...progressed.performedPhoneInteractions,
-        [action.scenarioId]: [...completedInteractions, interaction.id],
-      },
+      ...state,
+      performedPhoneInteractions,
       corruptionByScenario: {
-        ...progressed.corruptionByScenario,
+        ...state.corruptionByScenario,
         [action.scenarioId]: corruptionLevel,
       },
-      resolutionActionFeedback: progressed.resolutionActionFeedback
-        ? { ...progressed.resolutionActionFeedback, corruptionLevel }
-        : null,
+      resolutionActionFeedback: {
+        scenarioId: action.scenarioId,
+        actionId: entry.action.id,
+        stepId: supportingStep?.id ?? entry.action.steps[0]!.id,
+        outcome: 'supporting',
+        message: catalogAction
+          ? `${catalogAction.title} completed. ${catalogAction.description} The supporting action does not resolve the incident; it remains active.`
+          : `${supportingStep?.confirmation ?? interaction.label} This supporting action does not resolve the incident; it remains active.`,
+        corruptionLevel,
+      },
+      lastProgressAt: action.now,
     }
   }
 

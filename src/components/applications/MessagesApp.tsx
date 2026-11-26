@@ -8,7 +8,7 @@ import { PHONE_TARGETS } from '../../game/narrative'
 import { usePassiveClueTarget } from '../investigation/PassiveClueTarget'
 import { ReadMarker } from './ReadMarker'
 import { ScenarioPhoneInteraction } from './ScenarioPhoneInteraction'
-import { interactionsFor } from './phoneInteractionUtils'
+import { interactionsFor, primaryInteractionFor } from './phoneInteractionUtils'
 
 const INCIDENT = -1
 
@@ -43,7 +43,12 @@ export function MessagesApp({ game, data, encounter, onPhoneEvent }: { game: Gam
   const appClueRef = usePassiveClueTarget(game, 'messages', 'app', Boolean(
     (selected !== null && !isIncident(selected)) || selectedArtifact,
   ))
-  const menuItems = interactionsFor(game, 'messages', 'menu-item')
+  const primaryMenuAction = primaryInteractionFor(game, 'messages')
+  const inlinePrimaryMenuAction = primaryMenuAction?.control === 'menu-item' ? primaryMenuAction : undefined
+  const menuItems = (selected !== null && incident && isIncident(selected)
+    ? interactionsFor(game, 'messages', 'menu-item')
+    : [])
+    .filter(interaction => interaction.id !== inlinePrimaryMenuAction?.id)
   const replies = interactionsFor(game, 'messages', 'reply')
   const attachments = interactionsFor(game, 'messages', 'attachment')
   const preserve = interactionsFor(game, 'messages', 'preserve')
@@ -112,6 +117,12 @@ export function MessagesApp({ game, data, encounter, onPhoneEvent }: { game: Gam
           <ReadMarker key={targetFor(INCIDENT)} onRead={markRead(INCIDENT)} />
           {attachmentCard}
           {saveConversation}
+          {inlinePrimaryMenuAction && (
+            <section className="native-primary-action" aria-label="Primary protective action">
+              <span>Primary response</span>
+              <ScenarioPhoneInteraction game={game} interaction={inlinePrimaryMenuAction} />
+            </section>
+          )}
           {renderReplyComposer(text => setSentIncidentReplies(current => ({ ...current, [incident.id]: [...(current[incident.id] ?? []), text] })))}
         </div>
       </div>

@@ -5,10 +5,11 @@ import { NavigationBar } from './NavigationBar'
 import { HorrorOverlay } from '../horror/HorrorOverlay'
 import { playAppTouch } from '../../game/audio'
 
-export function PhoneShell({ children, simulatedTime, playerName, onBack, onHome, horrorStage, glitchActive, glitchId, corruptionLevel, warningVisible, warningId, dismissWarning }: {
+export function PhoneShell({ children, simulatedTime, playerName, evidenceProgress, onBack, onHome, horrorStage, glitchActive, glitchId, corruptionLevel, warningVisible, warningId, dismissWarning }: {
   children: ReactNode
   simulatedTime: string
   playerName?: string
+  evidenceProgress?: { discovered: number; total: number }
   onBack: () => void
   onHome: () => void
   horrorStage: HorrorStage
@@ -29,7 +30,7 @@ export function PhoneShell({ children, simulatedTime, playerName, onBack, onHome
         }
       }}
     >
-      <StatusBar simulatedTime={simulatedTime} playerName={playerName} />
+      <StatusBar simulatedTime={simulatedTime} playerName={playerName} evidenceProgress={evidenceProgress} />
       <div className="phone-screen">{children}</div>
       <HorrorOverlay
         stage={horrorStage}

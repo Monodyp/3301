@@ -4,9 +4,12 @@ import assert from 'node:assert/strict'
 import {
   EVENT_PARTICIPANT_KEY,
   createRegistrationId,
+  joinCodeFromSearch,
   loadStoredParticipant,
+  normalizeJoinCode,
   normalizeNickname,
   normalizeSessionId,
+  playerJoinUrl,
   registrationIdForSession,
   saveStoredParticipant,
   type StoredParticipant,
@@ -32,6 +35,20 @@ function memoryStorage(): Storage {
 test('session IDs normalize casing and reject malformed values', () => {
   assert.equal(normalizeSessionId('  550E8400-E29B-41D4-A716-446655440000 '), '550e8400-e29b-41d4-a716-446655440000')
   assert.equal(normalizeSessionId('not-a-session'), null)
+})
+
+test('player join codes remain four-character strings, including leading zeroes', () => {
+  assert.equal(normalizeJoinCode(' 0048 '), '0048')
+  assert.equal(normalizeJoinCode('4821'), '4821')
+  assert.equal(normalizeJoinCode('482'), null)
+  assert.equal(normalizeJoinCode('48210'), null)
+  assert.equal(normalizeJoinCode('48a1'), null)
+})
+
+test('QR join URLs use the code query parameter and preserve leading zeroes', () => {
+  const link = playerJoinUrl('https://game.example', '0048')
+  assert.equal(link, 'https://game.example/?code=0048')
+  assert.equal(joinCodeFromSearch(new URL(link).search), '0048')
 })
 
 test('nicknames are trimmed, Unicode-aware, and may be identical', () => {

@@ -7,7 +7,7 @@ import { PHONE_TARGETS } from '../../game/narrative'
 import { usePassiveClueTarget } from '../investigation/PassiveClueTarget'
 import { ReadMarker } from './ReadMarker'
 import { ScenarioPhoneInteraction } from './ScenarioPhoneInteraction'
-import { interactionsFor } from './phoneInteractionUtils'
+import { interactionsFor, primaryInteractionFor } from './phoneInteractionUtils'
 
 const INCIDENT = -1
 
@@ -24,6 +24,9 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
     : undefined
   const supportingEmailArtifacts = supportingEmail?.artifacts.filter(artifact => artifact.app === 'email') ?? []
   const incident = encounter?.trigger.app === 'email' ? encounter : supportingEmail
+  const incidentDeleted = Boolean(incident && game.state.performedPhoneInteractions[incident.id]?.some(id =>
+    game.resolutionAction?.action.interactions.some(interaction => interaction.id === id && interaction.actionType === 'deleteEmail'),
+  ))
   const incidentClueIds = game.clues
     .filter(clue => clue.source.app === 'email'
       && clue.source.surface === (incident?.trigger.app === 'email' ? 'incident' : 'app'))
@@ -40,14 +43,32 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
     (selected !== null && selected !== INCIDENT)
     || (selected === INCIDENT && incident?.trigger.app !== 'email'),
   ))
-  const menuItems = interactionsFor(game, 'email', 'menu-item')
+  const primaryMenuAction = primaryInteractionFor(game, 'email')
+  const inlinePrimaryMenuAction = primaryMenuAction?.control === 'menu-item' ? primaryMenuAction : undefined
+  const menuItems = (selected === INCIDENT
+    ? interactionsFor(game, 'email', 'menu-item')
+    : [])
+    .filter(interaction => interaction.id !== inlinePrimaryMenuAction?.id)
   const replies = interactionsFor(game, 'email', 'reply')
   const attachments = interactionsFor(game, 'email', 'attachment')
   const links = interactionsFor(game, 'email', 'link')
   const archives = interactionsFor(game, 'email', 'preserve')
   const menu = menuItems.length > 0 && (
     <div className="native-phone-menu" role="menu">
-      {menuItems.map(interaction => <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} role="menuitem">{interaction.label}</ScenarioPhoneInteraction>)}
+      {menuItems.map(interaction => (
+        <ScenarioPhoneInteraction
+          key={interaction.id}
+          game={game}
+          interaction={interaction}
+          role="menuitem"
+          onClick={interaction.actionType === 'deleteEmail' ? () => {
+            setSelected(null)
+            setMenuOpen(false)
+          } : undefined}
+        >
+          {interaction.label}
+        </ScenarioPhoneInteraction>
+      ))}
     </div>
   )
   const renderReplyComposer = (key: string) => replies.length > 0 && (
@@ -110,6 +131,12 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
           {(sentReplies[incident.id] ?? []).map((reply, index) => <div key={`sent-${index}`} className="email-thread-item me"><strong>{data?.profile.name ?? 'Me'}</strong><p>{reply}</p><time>now</time></div>)}
           {attachmentCard}
           {safeLinks}
+          {inlinePrimaryMenuAction && (
+            <section className="native-primary-action" aria-label="Primary protective action">
+              <span>Primary response</span>
+              <ScenarioPhoneInteraction game={game} interaction={inlinePrimaryMenuAction} />
+            </section>
+          )}
           <ReadMarker key={targetFor(INCIDENT)} onRead={markRead(INCIDENT)} />
           {archive}
           {renderReplyComposer(incident.id)}
@@ -146,7 +173,7 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
         </section>
       )}
       <div className="email-list">
-        {incident && (
+        {incident && !incidentDeleted && (
           <button className="email-row encounter-email" onClick={() => open(INCIDENT)}>
             <i />
             <div><strong>{supportingEmailArtifacts[0]?.label ?? incident.trigger.sender}</strong><time>now</time></div>

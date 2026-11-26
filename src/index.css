@@ -285,3 +285,20 @@ button.social-post{width:100%;border-left:0;border-right:0;border-top:0;backgrou
 .security-alert{display:flex;gap:8px;align-items:flex-start;border-left:2px solid #d6b05c;padding:5px 0 5px 8px}.security-alert span{display:flex;flex-direction:column;gap:2px}.security-alert b{font-size:10px;letter-spacing:.05em;text-transform:uppercase}.security-alert small{font-size:11px;color:#d1d5db;line-height:1.35}.security-alert em{font-style:normal;font-size:10px;color:#9aa1aa}
 .security-alert.attack-tier-2{border-left-color:#de7852}.security-alert.attack-tier-3{border-left-color:#e0485a}.security-alert.attack-tier-4{border-left-color:#ff3048}
 @media (prefers-reduced-motion:reduce){.transient-context{animation:context-hide 5s steps(1,end) forwards!important;opacity:1}.notification-attack,.notification-attack .notification-copy strong{animation:none!important}}
+
+.status-evidence-count{min-width:28px;padding:2px 5px;border:1px solid rgba(220,226,235,.22);border-radius:8px;color:#c5d3e2;font-size:9px;line-height:1.2;text-align:center;letter-spacing:.02em}
+.native-interaction-detail{display:block;margin-top:3px;color:#aab8c5;font-size:9px;font-weight:400;line-height:1.35;white-space:normal}
+.native-phone-menu .native-interaction-detail{color:#939eaa}
+.native-primary-action{display:grid;gap:6px;margin:12px 0;padding:10px;border:1px solid rgba(146,169,194,.24);border-radius:10px;background:rgba(28,34,41,.68)}
+.native-primary-action>span{color:#9eafbf;font-size:9px;letter-spacing:.07em;text-transform:uppercase}
+.native-primary-action .native-phone-interaction{width:100%;border-color:#657b8d;background:#293643}
+.native-contact-actions{display:grid;gap:6px;margin:16px 10px 0;text-align:left}
+.wallet-native-actions .native-interaction-menu-item{flex-basis:100%}
+.scenario-navigation-hint{position:absolute;z-index:18;top:6px;left:14px;right:14px;padding:7px 10px;border:1px solid rgba(146,169,194,.28);border-radius:9px;background:rgba(19,23,29,.95);color:#d7e0e9;font-size:10px;line-height:1.35;pointer-events:none}
+.home-scenario-hint{position:relative;margin:-22px 4px 18px;padding:8px 10px;border:1px solid rgba(146,169,194,.28);border-radius:9px;background:rgba(19,23,29,.78);color:#d7e0e9;font-size:10px;line-height:1.35}
+.installer-test-results{margin:12px 0;padding:11px;border:1px solid #c5c9c4;border-radius:9px;background:#e6e9e4;color:#30353a}
+.installer-test-results>span{display:block;margin-bottom:7px;color:#68756f;font-size:9px;text-transform:uppercase;letter-spacing:.08em}
+.installer-test-results summary{cursor:pointer;font-size:12px;font-weight:650}
+.installer-test-results details p,.installer-results-hint{font-size:10px;line-height:1.45;color:#555d62}
+.installer-results-hint{margin-bottom:0}
+.security-center-hint{margin:0 0 2px 0!important;color:#b9c2ce!important}

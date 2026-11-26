@@ -7,7 +7,7 @@ import { PHONE_TARGETS } from '../../game/narrative'
 import { usePassiveClueTarget } from '../investigation/PassiveClueTarget'
 import { ReadMarker } from './ReadMarker'
 import { ScenarioPhoneInteraction } from './ScenarioPhoneInteraction'
-import { interactionsFor } from './phoneInteractionUtils'
+import { interactionsFor, primaryInteractionFor } from './phoneInteractionUtils'
 
 export function SocialApp({ game, data, encounter, onPhoneEvent }: { game: Game; data?: CharacterPhoneData; encounter?: Encounter; onPhoneEvent?: (event: PhoneEvent) => void }) {
   const [incidentOpen, setIncidentOpen] = useState(false)
@@ -27,7 +27,10 @@ export function SocialApp({ game, data, encounter, onPhoneEvent }: { game: Game;
   const selectedPost = posts.find(post => post.id === selectedPostId)
   const incidentClueRef = usePassiveClueTarget(game, 'social', 'incident', incidentOpen && Boolean(incident))
   const appClueRef = usePassiveClueTarget<HTMLElement>(game, 'social', 'app', Boolean(selectedPost || selectedReference))
+  const primaryMenuAction = primaryInteractionFor(game, 'social')
+  const inlinePrimaryMenuAction = primaryMenuAction?.control === 'menu-item' ? primaryMenuAction : undefined
   const menuItems = interactionsFor(game, 'social', 'menu-item')
+    .filter(interaction => interaction.id !== inlinePrimaryMenuAction?.id)
   const replies = interactionsFor(game, 'social', 'reply')
   const bookmarks = interactionsFor(game, 'social', 'bookmark')
   const menu = menuItems.length > 0 && (
@@ -80,6 +83,19 @@ export function SocialApp({ game, data, encounter, onPhoneEvent }: { game: Game;
             <div className="post-actions"><span><MoreHorizontal size={16} /> Account information</span></div>
           </div>
         </article>
+        {inlinePrimaryMenuAction && (
+          <section className="native-primary-action" aria-label="Primary protective action">
+            <span>Primary response</span>
+            <ScenarioPhoneInteraction game={game} interaction={inlinePrimaryMenuAction} />
+          </section>
+        )}
+        {menuItems.length > 0 && (
+          <section className="native-contact-actions" aria-label="Other social safety actions">
+            {menuItems.map(interaction => (
+              <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} />
+            ))}
+          </section>
+        )}
       </div>
     )
   }
@@ -116,6 +132,12 @@ export function SocialApp({ game, data, encounter, onPhoneEvent }: { game: Game;
           ))}
           {(sentComments[incident.id] ?? []).map((comment, index) => <article key={`comment-${index}`} className="social-thread-item me"><strong>{data?.profile.name ?? 'Me'}</strong><p>{comment}</p><time>now</time></article>)}
           <ReadMarker key={target} onRead={() => onPhoneEvent?.({ kind: 'MESSAGE_READ', app: 'social', target })} />
+          {inlinePrimaryMenuAction && (
+            <section className="native-primary-action" aria-label="Primary protective action">
+              <span>Primary response</span>
+              <ScenarioPhoneInteraction game={game} interaction={inlinePrimaryMenuAction} />
+            </section>
+          )}
           {renderReplyComposer(incident.id)}
         </div>
         </div>
