@@ -1,9 +1,17 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import QRCode from 'qrcode'
 import '../../styles/organizer.css'
 import {
+  participantIncidentProgress,
+  summarizeIncidentProgress,
+  type IncidentStatus,
+  type ParticipantIncidentProgress,
+} from '../../event/adminProgress'
+import { buildSessionLeaderboards } from '../../event/leaderboards'
+import {
   adminLogin,
   adminLogout,
+  archiveAdminSession,
   clearAdminSessionToken,
   createAdminSession,
   exportAdminResults,
@@ -20,7 +28,10 @@ import {
 } from '../../event/api'
 import { normalizeJoinCode, playerJoinUrl } from '../../event/participant'
 
-type Section = 'overview' | 'sessions' | 'participants' | 'analytics' | 'results'
+type Section = 'overview' | 'sessions' | 'participants' | 'leaderboards' | 'analytics' | 'results'
+
+const ADMIN_REFRESH_INTERVAL_MS = 15_000
+const INCIDENT_REFRESH_INTERVAL_MS = 5_000
 
 function formatDate(value: unknown): string {
   if (typeof value !== 'string' || !value) return '—'
@@ -33,6 +44,31 @@ function formatDuration(milliseconds: unknown): string {
   const seconds = Math.round(milliseconds / 1000)
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function incidentsForRun(run: Record<string, unknown> | null): ParticipantIncidentProgress[] {
+  if (!run || typeof run.id !== 'string') return []
+  return participantIncidentProgress(run.id, run.scenarioIds, run.incidentProgress)
+}
+
+function incidentsForParticipantDetail(detail: Record<string, unknown>): ParticipantIncidentProgress[] {
+  const run = detail.run
+  if (!isRecord(run) || typeof run.id !== 'string') return []
+  const assignments = Array.isArray(detail.assignments) ? detail.assignments : []
+  const scenarioIds = assignments.flatMap(assignment => {
+    if (!isRecord(assignment)) return []
+    const scenarioId = assignment.scenario_id
+    return typeof scenarioId === 'string' ? [scenarioId] : []
+  })
+  return participantIncidentProgress(run.id, scenarioIds, detail.progress)
+}
+
+function incidentStatusLabel(status: IncidentStatus): string {
+  return status === 'in-progress' ? 'In progress' : status === 'resolved' ? 'Resolved' : 'Unresolved'
 }
 
 export function OrganizerDashboard() {
@@ -52,27 +88,69 @@ export function OrganizerDashboard() {
   const [participantDetail, setParticipantDetail] = useState<Record<string, unknown> | null>(null)
   const [participantSearch, setParticipantSearch] = useState('')
   const [participantSort, setParticipantSort] = useState<'nickname' | 'joined' | 'status'>('joined')
+  const [selectedParticipantId, setSelectedParticipantId] = useState('')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [createName, setCreateName] = useState('')
   const [createCapacity, setCreateCapacity] = useState(60)
   const [createdJoinCode, setCreatedJoinCode] = useState('')
   const [createdLink, setCreatedLink] = useState('')
   const [createdQr, setCreatedQr] = useState('')
+  const refreshInProgress = useRef(false)
 
-  const refresh = async () => {
-    if (!loggedIn) return
+  const loadSessionData = useCallback(async (
+    activeSection: Section,
+    sessionId: string,
+    filterSessionId: string,
+  ) => {
+    if (activeSection === 'participants') {
+      const response = await getAdminParticipants(sessionId)
+      setParticipants(response.participants)
+      return
+    }
+    if (activeSection === 'leaderboards') {
+      const [participantResponse, resultResponse] = await Promise.all([
+        getAdminParticipants(sessionId),
+        getAdminResults(sessionId),
+      ])
+      setParticipants(participantResponse.participants)
+      setResults(resultResponse.results)
+      return
+    }
+    if (activeSection === 'analytics') {
+      const response = await getIncidentAnalytics(filterSessionId || undefined)
+      setAnalytics(response.scenarios)
+      return
+    }
+    if (activeSection === 'results') {
+      const response = await getAdminResults(filterSessionId || undefined)
+      setResults(response.results)
+    }
+  }, [])
+
+  const refresh = useCallback(async () => {
+    if (!loggedIn || refreshInProgress.current) return
+    refreshInProgress.current = true
     setBusy(true)
     try {
-      const [overviewResponse, sessionResponse] = await Promise.all([
-        getAdminOverview(),
-        getAdminSessions(),
-      ])
-      setOverview(overviewResponse)
-      setSessions(sessionResponse.sessions)
-      setLastRefresh(new Date())
-      if (selectedSessionId) {
-        await loadSessionData(selectedSessionId)
+      const liveSessionView = Boolean(selectedSessionId)
+        && (section === 'participants' || section === 'leaderboards')
+      if (liveSessionView) {
+        await loadSessionData(section, selectedSessionId, sessionFilter)
+        if (section === 'participants' && selectedParticipantId) {
+          setParticipantDetail(await getAdminParticipant(selectedSessionId, selectedParticipantId))
+        }
+      } else {
+        const [overviewResponse, sessionResponse] = await Promise.all([
+          getAdminOverview(),
+          getAdminSessions(),
+        ])
+        setOverview(overviewResponse)
+        setSessions(sessionResponse.sessions)
+        if (selectedSessionId || section === 'analytics' || section === 'results') {
+          await loadSessionData(section, selectedSessionId, sessionFilter)
+        }
       }
+      setLastRefresh(new Date())
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : 'Could not refresh organizer data.')
       if (/login|required|unauthorized/i.test(error instanceof Error ? error.message : '')) {
@@ -80,27 +158,20 @@ export function OrganizerDashboard() {
         setLoggedIn(false)
       }
     } finally {
+      refreshInProgress.current = false
       setBusy(false)
     }
-  }
+  }, [loadSessionData, loggedIn, section, selectedParticipantId, selectedSessionId, sessionFilter])
 
-  const loadSessionData = async (sessionId: string) => {
-    const [participantResponse, analyticsResponse, resultResponse] = await Promise.all([
-      getAdminParticipants(sessionId),
-      getIncidentAnalytics(sessionId),
-      getAdminResults(sessionId),
-    ])
-    setParticipants(participantResponse.participants)
-    setAnalytics(analyticsResponse.scenarios)
-    setResults(resultResponse.results)
-  }
-
+  const refreshInterval = (section === 'participants' || section === 'leaderboards') && selectedSessionId
+    ? INCIDENT_REFRESH_INTERVAL_MS
+    : ADMIN_REFRESH_INTERVAL_MS
   useEffect(() => {
     if (!loggedIn) return
     void refresh()
-    const interval = window.setInterval(() => void refresh(), 15000)
+    const interval = window.setInterval(() => void refresh(), refreshInterval)
     return () => window.clearInterval(interval)
-  }, [loggedIn, selectedSessionId])
+  }, [loggedIn, refresh, refreshInterval])
 
   useEffect(() => {
     if (!createdLink) {
@@ -132,6 +203,9 @@ export function OrganizerDashboard() {
     setLoggedIn(false)
     setOverview(null)
     setSessions([])
+    setParticipants([])
+    setParticipantDetail(null)
+    setSelectedParticipantId('')
   }
 
   const createSession = async (event: FormEvent<HTMLFormElement>) => {
@@ -183,18 +257,64 @@ export function OrganizerDashboard() {
     }
   }
 
-  const selectSession = async (sessionId: string) => {
-    setSelectedSessionId(sessionId)
-    setParticipantDetail(null)
+  const deleteSession = async (session: Record<string, unknown>) => {
+    const sessionId = String(session.id ?? '')
+    const sessionName = String(session.name ?? 'Unnamed session')
+    const joinCode = String(session.join_code ?? 'unknown code')
+    if (!window.confirm(
+      `Delete session "${sessionName}" (${joinCode})?\n\nThis will archive the session and prevent participants from joining. Participant records and results will be kept for historical review, and this join code will never be reused.`,
+    )) return
+
+    setBusy(true)
+    setNotice(null)
     try {
-      await loadSessionData(sessionId)
+      const response = await archiveAdminSession(sessionId)
+      if (selectedSessionId === sessionId) {
+        setSelectedSessionId('')
+        setSelectedParticipantId('')
+        setParticipantDetail(null)
+        setParticipants([])
+        setAnalytics([])
+        setResults([])
+      }
+      if (sessionFilter === sessionId) {
+        setSessionFilter('')
+        setResults([])
+      }
+      setNotice(response.alreadyArchived
+        ? `Session "${sessionName}" was already archived.`
+        : `Session "${sessionName}" archived. Participant and result history was retained.`)
+      await refresh()
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not load session.')
+      setNotice(error instanceof Error ? error.message : 'Could not archive session.')
+    } finally {
+      setBusy(false)
     }
+  }
+
+  const selectSession = (sessionId: string) => {
+    if (sessions.some(session => String(session.id) === sessionId && session.status === 'archived')) return
+    setSelectedSessionId(sessionId)
+    setSelectedParticipantId('')
+    setParticipantDetail(null)
+    setParticipants([])
+    setResults([])
+    setAnalytics([])
+  }
+
+  const viewArchivedResults = (sessionId: string) => {
+    setSessionFilter(sessionId)
+    setSection('results')
+    setSelectedSessionId('')
+    setSelectedParticipantId('')
+    setParticipantDetail(null)
+    setParticipants([])
+    setResults([])
   }
 
   const selectParticipant = async (playerId: string) => {
     if (!selectedSessionId) return
+    setSelectedParticipantId(playerId)
     try {
       setParticipantDetail(await getAdminParticipant(selectedSessionId, playerId))
     } catch (error) {
@@ -228,6 +348,18 @@ export function OrganizerDashboard() {
       return String(right.joined_at).localeCompare(String(left.joined_at))
     })
   }, [participants, participantSearch, participantSort])
+  const sessionProgress = useMemo(() => summarizeIncidentProgress(
+    participants.map(participant => {
+      const run = isRecord(participant.run) ? participant.run : null
+      return incidentsForRun(run)
+    }),
+  ), [participants])
+  const sessionLeaderboards = useMemo(
+    () => buildSessionLeaderboards(selectedSessionId, participants, results),
+    [participants, results, selectedSessionId],
+  )
+  const activeSessions = sessions.filter(session => session.status !== 'archived')
+  const archivedSessions = sessions.filter(session => session.status === 'archived')
 
   if (!loggedIn) {
     return (
@@ -255,11 +387,20 @@ export function OrganizerDashboard() {
   }
 
   const incidentStats = overview?.incidentStats as Record<string, number> | undefined
+  const overallIncidentProgress = incidentStats
+    ? {
+      resolved: typeof incidentStats.resolved === 'number' ? incidentStats.resolved : 0,
+      total: typeof incidentStats.assigned === 'number' ? incidentStats.assigned : 0,
+    }
+    : null
   const selectedSession = sessions.find(session => String(session.id) === selectedSessionId)
   const selectedSessionJoinCode = typeof selectedSession?.join_code === 'string' ? selectedSession.join_code : ''
   const selectedSessionJoinLink = normalizeJoinCode(selectedSessionJoinCode)
     ? playerJoinUrl(window.location.origin, selectedSessionJoinCode)
     : ''
+  const selectedParticipantIncidents = participantDetail
+    ? incidentsForParticipantDetail(participantDetail)
+    : []
 
   return (
     <main className="organizer-shell">
@@ -270,6 +411,7 @@ export function OrganizerDashboard() {
             ['overview', 'Overview'],
             ['sessions', 'Sessions'],
             ['participants', 'Participants'],
+            ['leaderboards', 'Leaderboards'],
             ['analytics', 'Incident Analytics'],
             ['results', 'Results'],
           ] as Array<[Section, string]>).map(([key, label]) => (
@@ -284,10 +426,11 @@ export function OrganizerDashboard() {
         <header className="organizer-header">
           <div>
             <span className="organizer-kicker">SEMINAR CONTROL</span>
-            <h1>{section === 'overview' ? 'Overview' : section === 'sessions' ? 'Sessions' : section === 'participants' ? 'Participants' : section === 'analytics' ? 'Incident Analytics' : 'Results and Leaderboard'}</h1>
+            <h1>{section === 'overview' ? 'Overview' : section === 'sessions' ? 'Sessions' : section === 'participants' ? 'Participants' : section === 'leaderboards' ? 'Leaderboards' : section === 'analytics' ? 'Incident Analytics' : 'Results'}</h1>
           </div>
           <div className="organizer-refresh">
             <span>{busy ? 'Refreshing…' : lastRefresh ? `Last refreshed ${lastRefresh.toLocaleTimeString()}` : 'Not refreshed'}</span>
+            {(section === 'participants' || section === 'leaderboards') && selectedSessionId && <span>Auto-refreshes every 5 seconds</span>}
             <button type="button" onClick={() => void refresh()} disabled={busy}>Refresh</button>
           </div>
         </header>
@@ -300,6 +443,7 @@ export function OrganizerDashboard() {
               ['Waiting', overview?.waitingSessions],
               ['Active', overview?.activeSessions],
               ['Completed sessions', overview?.completedSessions],
+              ['Archived sessions', overview?.archivedSessions],
               ['Registered participants', overview?.totalParticipants],
               ['In progress', overview?.participantsInProgress],
               ['Completed runs', overview?.participantsCompleted],
@@ -315,12 +459,22 @@ export function OrganizerDashboard() {
             <article className="organizer-panel organizer-wide">
               <h2>Incident completion</h2>
               {incidentStats ? (
-                <div className="organizer-stat-row">
-                  <span>Assigned <strong>{incidentStats.assigned}</strong></span>
-                  <span>Started <strong>{incidentStats.started}</strong></span>
-                  <span>Resolved <strong>{incidentStats.resolved}</strong></span>
-                  <span>Completed <strong>{incidentStats.completed}</strong></span>
-                </div>
+                <>
+                  <div className="organizer-progress-summary">
+                    <strong>{overallIncidentProgress?.resolved}/{overallIncidentProgress?.total} assigned incidents resolved</strong>
+                    <progress
+                      value={overallIncidentProgress?.resolved ?? 0}
+                      max={Math.max(overallIncidentProgress?.total ?? 0, 1)}
+                      aria-label="All sessions incident resolution progress"
+                    />
+                  </div>
+                  <div className="organizer-stat-row">
+                    <span>Assigned <strong>{incidentStats.assigned}</strong></span>
+                    <span>Started <strong>{incidentStats.started}</strong></span>
+                    <span>Resolved <strong>{incidentStats.resolved}</strong></span>
+                    <span>Completed <strong>{incidentStats.completed}</strong></span>
+                  </div>
+                </>
               ) : <p>No persisted incident activity.</p>}
             </article>
             <article className="organizer-panel organizer-wide">
@@ -369,16 +523,16 @@ export function OrganizerDashboard() {
               )}
             </aside>
             <article className="organizer-panel organizer-session-list">
-              <h2>All sessions</h2>
-              {sessions.length === 0 ? <p>No sessions have been created.</p> : (
+              <h2>Sessions</h2>
+              {activeSessions.length === 0 ? <p>No unarchived sessions.</p> : (
                 <div className="organizer-table-wrap">
                   <table>
                     <thead><tr><th>Name</th><th>Join code</th><th>Status</th><th>Participants</th><th>Completed</th><th>Created</th><th>Actions</th></tr></thead>
                     <tbody>
-                      {sessions.map(session => (
+                      {activeSessions.map(session => (
                         <tr key={String(session.id)}>
                           <td>
-                            <button className="organizer-link" type="button" onClick={() => void selectSession(String(session.id))}>{String(session.name)}</button>
+                            <button className="organizer-link" type="button" onClick={() => selectSession(String(session.id))}>{String(session.name)}</button>
                             <small>{String(session.id)}</small>
                           </td>
                           <td><strong className="organizer-join-code">{String(session.join_code)}</strong></td>
@@ -390,12 +544,53 @@ export function OrganizerDashboard() {
                             {session.status === 'waiting' && <button type="button" onClick={() => void changeStatus(String(session.id), 'active')} disabled={busy}>Start</button>}
                             {session.status === 'active' && <button type="button" onClick={() => void changeStatus(String(session.id), 'completed')} disabled={busy}>Complete</button>}
                             <button className="organizer-danger" type="button" onClick={() => void resetSession(String(session.id))} disabled={busy || session.status === 'waiting' && session.participantCount === 0}>Reset</button>
+                            <button
+                              className="organizer-danger organizer-delete-session"
+                              type="button"
+                              aria-label={`Delete session ${String(session.name)} (${String(session.join_code)})`}
+                              onClick={() => void deleteSession(session)}
+                              disabled={busy}
+                            >
+                              Delete session
+                            </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              )}
+              {archivedSessions.length > 0 && (
+                <section className="organizer-archived-sessions" aria-labelledby="archived-sessions-heading">
+                  <h3 id="archived-sessions-heading">Archived sessions</h3>
+                  <p>Archived sessions cannot accept participants. Their join codes remain reserved and their history is retained.</p>
+                  <div className="organizer-table-wrap">
+                    <table>
+                      <thead><tr><th>Name</th><th>Join code</th><th>Status</th><th>Participants</th><th>Completed</th><th>Created</th><th>History</th></tr></thead>
+                      <tbody>
+                        {archivedSessions.map(session => (
+                          <tr key={String(session.id)}>
+                            <td>{String(session.name)}<small>{String(session.id)}</small></td>
+                            <td><strong className="organizer-join-code">{String(session.join_code)}</strong></td>
+                            <td><span className="organizer-status archived">Archived</span></td>
+                            <td>{String(session.participantCount)} / {String(session.max_players)}</td>
+                            <td>{String(session.completionCount)}</td>
+                            <td>{formatDate(session.created_at)}</td>
+                            <td>
+                              <button
+                                className="organizer-link"
+                                type="button"
+                                onClick={() => viewArchivedResults(String(session.id))}
+                              >
+                                View results
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               )}
               {selectedSession && (
                 <div className="organizer-session-details">
@@ -421,7 +616,7 @@ export function OrganizerDashboard() {
               <div className="organizer-toolbar">
                 <select value={selectedSessionId} onChange={event => void selectSession(event.target.value)}>
                   <option value="">Select a session</option>
-                  {sessions.map(session => <option key={String(session.id)} value={String(session.id)}>{String(session.name)}</option>)}
+                  {activeSessions.map(session => <option key={String(session.id)} value={String(session.id)}>{String(session.name)}</option>)}
                 </select>
                 <input type="search" placeholder="Search nickname" value={participantSearch} onChange={event => setParticipantSearch(event.target.value)} />
                 <select value={participantSort} onChange={event => setParticipantSort(event.target.value as typeof participantSort)}>
@@ -430,19 +625,57 @@ export function OrganizerDashboard() {
                   <option value="status">Status</option>
                 </select>
               </div>
+              {selectedSessionId && (
+                <div className="organizer-progress-summary organizer-session-progress">
+                  <strong>Session progress: {sessionProgress.resolved}/{sessionProgress.total} assigned incidents resolved</strong>
+                  <progress
+                    value={sessionProgress.resolved}
+                    max={Math.max(sessionProgress.total, 1)}
+                    aria-label="Selected session incident resolution progress"
+                  />
+                </div>
+              )}
               {selectedSessionId && filteredParticipants.length === 0 ? <p>No participants match this view.</p> : (
                 <div className="organizer-table-wrap">
                   <table>
-                    <thead><tr><th>Nickname</th><th>Participant ID</th><th>Registered</th><th>Run status</th><th>Result</th></tr></thead>
+                    <thead><tr><th>Nickname</th><th>Participant ID</th><th>Registered</th><th>Run status</th><th>Incident progress</th><th>Result</th></tr></thead>
                     <tbody>
                       {filteredParticipants.map(participant => {
                         const run = participant.run as Record<string, unknown> | null
+                        const incidents = incidentsForRun(run)
+                        const resolvedCount = incidents.filter(incident => incident.status === 'resolved').length
                         return (
                           <tr key={String(participant.id)}>
                             <td><button className="organizer-link" type="button" onClick={() => void selectParticipant(String(participant.id))}>{String(participant.nickname)}</button></td>
                             <td><code>{String(participant.id)}</code></td>
                             <td>{formatDate(participant.joined_at)}</td>
                             <td>{run ? String(run.status) : String(participant.completion_status)}</td>
+                            <td>
+                              {run ? (
+                                <div className="organizer-player-progress">
+                                  <strong>{resolvedCount}/{incidents.length} incidents resolved</strong>
+                                  <progress
+                                    value={resolvedCount}
+                                    max={Math.max(incidents.length, 1)}
+                                    aria-label={`${resolvedCount} of ${incidents.length} incidents resolved for ${String(participant.nickname)}`}
+                                  />
+                                  <details className="organizer-incident-details">
+                                    <summary>Incident statuses</summary>
+                                    <ul>
+                                      {incidents.map(incident => (
+                                        <li key={incident.scenarioId}>
+                                          <code>{incident.scenarioId}</code>
+                                          <span className={`organizer-incident-status ${incident.status}`}>
+                                            {incidentStatusLabel(incident.status)}
+                                          </span>
+                                          {incident.resolvedAt && <time>{formatDate(incident.resolvedAt)}</time>}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </details>
+                                </div>
+                              ) : <span>Not assigned</span>}
+                            </td>
                             <td>{participant.completed_at ? 'Submitted/run completed' : 'In progress or waiting'}</td>
                           </tr>
                         )
@@ -466,9 +699,15 @@ export function OrganizerDashboard() {
                   <ol>{(participantDetail.assignments as Array<Record<string, unknown>>).map(item => <li key={String(item.scenario_id)}>{String(item.scenario_id)}</li>)}</ol>
                 ) : <p>No authoritative assignment yet.</p>}
                 <h3>Scenario progress</h3>
-                {((participantDetail.progress as Array<Record<string, unknown>>) ?? []).length ? (
-                  <ul>{(participantDetail.progress as Array<Record<string, unknown>>).map(item =>
-                    <li key={String(item.scenario_id)}>{String(item.scenario_id)} · {String(item.state)} · evidence {(item.evidence as unknown[] | undefined)?.length ?? 0}</li>)}</ul>
+                {selectedParticipantIncidents.length ? (
+                  <ul className="organizer-incident-list">{selectedParticipantIncidents.map(incident =>
+                    <li key={incident.scenarioId}>
+                      <code>{incident.scenarioId}</code>
+                      <span className={`organizer-incident-status ${incident.status}`}>
+                        {incidentStatusLabel(incident.status)}
+                      </span>
+                      {incident.resolvedAt && <time>Resolved {formatDate(incident.resolvedAt)}</time>}
+                    </li>)}</ul>
                 ) : <p>No persisted scenario progress.</p>}
                 <h3>Recorded actions</h3>
                 {((participantDetail.actions as Array<Record<string, unknown>>) ?? []).length ? (
@@ -488,16 +727,163 @@ export function OrganizerDashboard() {
           </div>
         )}
 
+        {section === 'leaderboards' && (
+          <div className="organizer-leaderboards">
+            <article className="organizer-panel organizer-leaderboard-controls">
+              <div className="organizer-toolbar">
+                <label htmlFor="leaderboard-session">Event session</label>
+                <select
+                  id="leaderboard-session"
+                  value={selectedSessionId}
+                  onChange={event => selectSession(event.target.value)}
+                >
+                  <option value="">Select a session</option>
+                  {activeSessions.map(session => (
+                    <option key={String(session.id)} value={String(session.id)}>
+                      {String(session.name)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!selectedSessionId ? (
+                <p>Select a session to view its live leaderboards.</p>
+              ) : (
+                <>
+                  <div className="organizer-leaderboard-summary">
+                    <div className="organizer-leaderboard-session">
+                      <span>SESSION</span>
+                      <strong>{String(selectedSession?.name ?? 'Selected session')}</strong>
+                      <small>Join code: {String(selectedSession?.join_code ?? '—')}</small>
+                    </div>
+                    <div className="organizer-leaderboard-stat">
+                      <span>Total participants</span>
+                      <strong>{sessionLeaderboards.totalParticipants}</strong>
+                    </div>
+                    <div className="organizer-leaderboard-stat">
+                      <span>Completed runs</span>
+                      <strong>{sessionLeaderboards.completedRuns}</strong>
+                    </div>
+                    <div className="organizer-leaderboard-stat">
+                      <span>In progress</span>
+                      <strong>{sessionLeaderboards.inProgressParticipants}</strong>
+                    </div>
+                    <div className="organizer-leaderboard-stat organizer-leaderboard-progress">
+                      <span>Assigned incident progress</span>
+                      <strong>{sessionLeaderboards.resolvedIncidents}/{sessionLeaderboards.assignedIncidents}</strong>
+                      <progress
+                        value={sessionLeaderboards.resolvedIncidents}
+                        max={Math.max(sessionLeaderboards.assignedIncidents, 1)}
+                        aria-label="Selected session incident resolution progress"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="organizer-leaderboard-grid">
+                    <article className="organizer-panel organizer-leaderboard-panel">
+                      <h2>Highest score</h2>
+                      {sessionLeaderboards.highestScore.length === 0 ? (
+                        <p>No participants are available for this session.</p>
+                      ) : (
+                        <div className="organizer-table-wrap">
+                          <table>
+                            <thead>
+                              <tr><th>Rank</th><th>Nickname</th><th>Points</th><th>Incidents resolved</th><th>Run status</th></tr>
+                            </thead>
+                            <tbody>
+                              {sessionLeaderboards.highestScore.map(entry => (
+                                <tr key={entry.playerId}>
+                                  <td>
+                                    <span className={`organizer-rank organizer-rank-${entry.rank <= 3 ? entry.rank : 'other'}`}>
+                                      {entry.rank}
+                                    </span>
+                                  </td>
+                                  <td>{entry.nickname}</td>
+                                  <td><strong>{entry.score}</strong></td>
+                                  <td>
+                                    <div className="organizer-leaderboard-incidents">
+                                      <strong>{entry.resolvedIncidents}/{entry.assignedIncidents}</strong>
+                                      <progress
+                                        value={entry.resolvedIncidents}
+                                        max={Math.max(entry.assignedIncidents, 1)}
+                                        aria-label={`${entry.resolvedIncidents} of ${entry.assignedIncidents} incidents resolved for ${entry.nickname}`}
+                                      />
+                                      <details className="organizer-incident-details">
+                                        <summary>Incident statuses</summary>
+                                        <ul>
+                                          {entry.incidents.map(incident => (
+                                            <li key={incident.scenarioId}>
+                                              <code>{incident.scenarioId}</code>
+                                              <span className={`organizer-incident-status ${incident.status}`}>
+                                                {incidentStatusLabel(incident.status)}
+                                              </span>
+                                              {incident.resolvedAt && <time>{formatDate(incident.resolvedAt)}</time>}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </details>
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <span className={`organizer-leaderboard-run-status ${entry.runStatus.toLowerCase().replace(/\s+/g, '-')}`}>
+                                      {entry.runStatus}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </article>
+
+                    <article className="organizer-panel organizer-leaderboard-panel">
+                      <h2>Fastest completion</h2>
+                      {sessionLeaderboards.fastestCompletion.length === 0 ? (
+                        <p>No valid five-incident completions yet.</p>
+                      ) : (
+                        <div className="organizer-table-wrap">
+                          <table>
+                            <thead>
+                              <tr><th>Rank</th><th>Nickname</th><th>Final score</th><th>Completed</th><th>Elapsed</th></tr>
+                            </thead>
+                            <tbody>
+                              {sessionLeaderboards.fastestCompletion.map(entry => (
+                                <tr key={entry.playerId}>
+                                  <td>
+                                    <span className={`organizer-rank organizer-rank-${entry.rank <= 3 ? entry.rank : 'other'}`}>
+                                      {entry.rank}
+                                    </span>
+                                  </td>
+                                  <td>{entry.nickname}</td>
+                                  <td><strong>{entry.finalScore}</strong></td>
+                                  <td>
+                                    {entry.completedAt
+                                      ? <time dateTime={entry.completedAt}>{formatDate(entry.completedAt)}</time>
+                                      : '—'}
+                                  </td>
+                                  <td>{formatDuration(entry.elapsedDurationMs)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </article>
+                  </div>
+                </>
+              )}
+            </article>
+          </div>
+        )}
+
         {section === 'analytics' && (
           <article className="organizer-panel">
             <div className="organizer-toolbar">
               <select value={sessionFilter} onChange={event => {
-                const value = event.target.value
-                setSessionFilter(value)
-                void getIncidentAnalytics(value || undefined).then(response => setAnalytics(response.scenarios)).catch(error => setNotice(error instanceof Error ? error.message : 'Could not load analytics'))
+                setSessionFilter(event.target.value)
               }}>
                 <option value="">All sessions</option>
-                {sessions.map(session => <option key={String(session.id)} value={String(session.id)}>{String(session.name)}</option>)}
+                {sessions.map(session => <option key={String(session.id)} value={String(session.id)}>{`${String(session.name)}${session.status === 'archived' ? ' (Archived)' : ''}`}</option>)}
               </select>
             </div>
             {analytics.length === 0 ? <p>No assigned scenarios are available for this view.</p> : (
@@ -528,12 +914,10 @@ export function OrganizerDashboard() {
           <article className="organizer-panel">
             <div className="organizer-toolbar">
               <select value={sessionFilter} onChange={event => {
-                const value = event.target.value
-                setSessionFilter(value)
-                void getAdminResults(value || undefined).then(response => setResults(response.results)).catch(error => setNotice(error instanceof Error ? error.message : 'Could not load results'))
+                setSessionFilter(event.target.value)
               }}>
                 <option value="">All sessions</option>
-                {sessions.map(session => <option key={String(session.id)} value={String(session.id)}>{String(session.name)}</option>)}
+                {sessions.map(session => <option key={String(session.id)} value={String(session.id)}>{`${String(session.name)}${session.status === 'archived' ? ' (Archived)' : ''}`}</option>)}
               </select>
               <button type="button" onClick={() => void downloadCsv()} disabled={results.length === 0}>Export CSV</button>
             </div>

@@ -7,7 +7,7 @@ export interface EventSessionSummary {
   id: string
   joinCode: string
   name: string
-  status: EventSessionStatus
+  status: EventSessionStatus | 'archived'
   playerCount: number
   maxPlayers: number
 }
@@ -40,6 +40,7 @@ const USER_MESSAGES: Record<string, string> = {
   session_full: 'This event session is full.',
   session_not_open: 'This session is no longer accepting participants.',
   session_not_active: 'This session is not active. Wait for the organizer or return to the session screen.',
+  session_archived: 'This session has been archived and cannot be changed.',
   player_not_found: 'This participant registration could not be verified.',
   player_completed: 'This participant registration is already complete.',
   organizer_unauthorized: 'Organizer authorization was rejected.',
@@ -250,6 +251,14 @@ export async function setAdminSessionStatus(sessionId: string, status: EventSess
 
 export async function resetAdminSession(sessionId: string): Promise<{ session: EventSessionSummary }> {
   return adminInvoke({ action: 'reset', sessionId, confirmSessionId: sessionId })
+}
+
+export async function archiveAdminSession(sessionId: string): Promise<{
+  sessionId: string
+  archived: true
+  alreadyArchived: boolean
+}> {
+  return adminInvoke({ action: 'delete-session', sessionId })
 }
 
 export async function getAdminSession(sessionId: string): Promise<Record<string, unknown>> {

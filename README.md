@@ -23,4 +23,4 @@ npm run lint
 
 Deployment and event setup are documented in [docs/deployment.md](./docs/deployment.md). Database migrations are in [supabase/migrations/](./supabase/migrations); the session Edge Function is in [supabase/functions/session-api/](./supabase/functions/session-api).
 
-Participant joining and session lifecycle are implemented. Character balancing, score submission, a leaderboard, and an organizer dashboard remain future work.
+Participant joining, five-scenario progress, result submission, and the organizer dashboard with session-specific leaderboards and session archiving are implemented. Character balancing and further game-engine synchronization remain future work.

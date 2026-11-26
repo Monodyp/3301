@@ -6,6 +6,8 @@ interface ApiError extends Error {
   code: string
 }
 
+type SessionSummaryStatus = SessionStatus | 'archived'
+
 let adminClient: SupabaseClient | undefined
 let joinRateLimitHmacKey: CryptoKey | undefined
 
@@ -252,6 +254,7 @@ function mapDatabaseError(message: string): ApiError {
   if (value.includes('session_full')) return apiError('session_full', 409)
   if (value.includes('session_not_open')) return apiError('session_not_open', 409)
   if (value.includes('session_not_active')) return apiError('session_not_active', 409)
+  if (value.includes('session_archived')) return apiError('session_archived', 409)
   if (value.includes('join_code_space_exhausted')) return apiError('join_code_space_exhausted', 503)
   if (value.includes('join_code_immutable') || value.includes('join_code_managed')) {
     return apiError('database_operation_failed', 500)
@@ -272,7 +275,7 @@ function mapDatabaseError(message: string): ApiError {
 }
 
 function sessionSummary(
-  session: { id: string; join_code: string; name: string; status: SessionStatus; max_players: number },
+  session: { id: string; join_code: string; name: string; status: SessionSummaryStatus; max_players: number },
   playerCount: number,
 ) {
   return {
@@ -653,6 +656,7 @@ async function updateSessionStatus(client: SupabaseClient, body: Record<string, 
     .maybeSingle()
   if (lookupError) throw mapDatabaseError(lookupError.message)
   if (!current) throw apiError('session_not_found', 404)
+  if (current.status === 'archived') throw apiError('session_archived', 409)
   if (current.status === nextStatus) {
     return { session: await getSessionSummary(client, body.sessionId) }
   }
@@ -674,6 +678,15 @@ async function resetSession(client: SupabaseClient, body: Record<string, unknown
   if (!isUuid(body.sessionId)) throw apiError('invalid_session_id', 400)
   if (body.confirmSessionId !== body.sessionId) throw apiError('invalid_reset_confirmation', 400)
 
+  const { data: current, error: lookupError } = await client
+    .from('event_sessions')
+    .select('status')
+    .eq('id', body.sessionId)
+    .maybeSingle()
+  if (lookupError) throw mapDatabaseError(lookupError.message)
+  if (!current) throw apiError('session_not_found', 404)
+  if (current.status === 'archived') throw apiError('session_archived', 409)
+
   const { data, error } = await client.rpc('reset_event_session', {
     p_session_id: body.sessionId,
   })
@@ -682,6 +695,23 @@ async function resetSession(client: SupabaseClient, body: Record<string, unknown
     throw apiError('database_operation_failed', 500)
   }
   return { session: await getSessionSummary(client, body.sessionId), reset: true }
+}
+
+async function archiveSession(client: SupabaseClient, body: Record<string, unknown>) {
+  if (!isUuid(body.sessionId)) throw apiError('invalid_session_id', 400)
+  const { data, error } = await client.rpc('archive_event_session', {
+    p_session_id: body.sessionId,
+  })
+  if (error) throw mapDatabaseError(error.message)
+  const archived = Array.isArray(data) ? data[0] : data
+  if (!isRecord(archived) || archived.session_id !== body.sessionId) {
+    throw apiError('database_operation_failed', 500)
+  }
+  return {
+    sessionId: archived.session_id,
+    archived: true,
+    alreadyArchived: archived.already_archived === true,
+  }
 }
 
 async function revokeAdminSession(request: Request, client: SupabaseClient) {
@@ -718,11 +748,23 @@ async function adminOverview(client: SupabaseClient) {
     ? scoreRows.reduce((sum, row) => sum + row.final_score, 0) / scoreRows.length
     : null
 
-  const { data: progressRows, error: progressError } = await client
-    .from('event_run_scenario_progress')
-    .select('state')
-  if (progressError) throw mapDatabaseError(progressError.message)
-  const states = (progressRows ?? []) as Array<{ state: string }>
+  const [assignedIncidents, startedIncidents, completedIncidents, resolvedIncidents] = await Promise.all([
+    client.from('event_run_scenarios').select('scenario_id', { count: 'exact', head: true }),
+    client.from('event_run_scenario_progress')
+      .select('scenario_id', { count: 'exact', head: true })
+      .neq('state', 'assigned'),
+    client.from('event_run_scenario_progress')
+      .select('scenario_id', { count: 'exact', head: true })
+      .eq('state', 'completed'),
+    client.from('event_run_scenario_progress')
+      .select('scenario_id', { count: 'exact', head: true })
+      .eq('resolution_correct', true)
+      .not('resolved_at', 'is', null)
+      .in('state', ['resolved', 'completed']),
+  ])
+  for (const query of [assignedIncidents, startedIncidents, completedIncidents, resolvedIncidents]) {
+    if (query.error) throw mapDatabaseError(query.error.message)
+  }
   return {
     totalSessions: sessions.count ?? 0,
     waitingSessions: waiting,
@@ -731,12 +773,13 @@ async function adminOverview(client: SupabaseClient) {
     totalParticipants: players.count ?? 0,
     participantsInProgress: inProgress.count ?? 0,
     participantsCompleted: completed.count ?? 0,
+    archivedSessions: sessionRows.filter(row => row.status === 'archived').length,
     averageParticipantScore: averageScore,
     incidentStats: {
-      assigned: states.filter(row => row.state !== 'assigned').length,
-      started: states.filter(row => ['investigating', 'resolved', 'completed'].includes(row.state)).length,
-      completed: states.filter(row => row.state === 'completed').length,
-      resolved: states.filter(row => ['resolved', 'completed'].includes(row.state)).length,
+      assigned: assignedIncidents.count ?? 0,
+      started: startedIncidents.count ?? 0,
+      completed: completedIncidents.count ?? 0,
+      resolved: resolvedIncidents.count ?? 0,
     },
   }
 }
@@ -798,7 +841,7 @@ async function listParticipants(client: SupabaseClient, body: Record<string, unk
   if (!isUuid(body.sessionId)) throw apiError('invalid_session_id', 400)
   const { data: players, error } = await client
     .from('event_players')
-    .select('id,nickname,joined_at,completion_status,completed_at')
+    .select('id,session_id,nickname,joined_at,completion_status,completed_at')
     .eq('session_id', body.sessionId)
     .order('joined_at')
   if (error) throw mapDatabaseError(error.message)
@@ -808,20 +851,29 @@ async function listParticipants(client: SupabaseClient, body: Record<string, unk
 
   const { data: runs, error: runError } = await client
     .from('event_participant_runs')
-    .select('id,player_id,status,progress,updated_at')
+    .select('id,player_id,status,progress,started_at,updated_at')
     .eq('session_id', body.sessionId)
   if (runError) throw mapDatabaseError(runError.message)
   const runRows = runs ?? []
   const runIds = runRows.map(run => run.id)
   let assignments: Array<{ run_id: string; scenario_id: string; ordinal: number }> = []
+  let incidentProgress: Array<Record<string, unknown>> = []
   if (runIds.length > 0) {
-    const { data, error: assignmentError } = await client
-      .from('event_run_scenarios')
-      .select('run_id,scenario_id,ordinal')
-      .in('run_id', runIds)
-      .order('ordinal')
-    if (assignmentError) throw mapDatabaseError(assignmentError.message)
-    assignments = data ?? []
+    const [assignmentResult, progressResult] = await Promise.all([
+      client
+        .from('event_run_scenarios')
+        .select('run_id,scenario_id,ordinal')
+        .in('run_id', runIds)
+        .order('ordinal'),
+      client
+        .from('event_run_scenario_progress')
+        .select('run_id,scenario_id,state,resolution_correct,delivered_at,started_at,resolved_at,completed_at')
+        .in('run_id', runIds),
+    ])
+    if (assignmentResult.error) throw mapDatabaseError(assignmentResult.error.message)
+    if (progressResult.error) throw mapDatabaseError(progressResult.error.message)
+    assignments = assignmentResult.data ?? []
+    incidentProgress = (progressResult.data ?? []) as Array<Record<string, unknown>>
   }
   return {
     participants: playerRows.map(player => {
@@ -833,6 +885,7 @@ async function listParticipants(client: SupabaseClient, body: Record<string, unk
           status: run.status,
           scenarioIds: assignments.filter(row => row.run_id === run.id).map(row => row.scenario_id),
           progress: run.progress,
+          incidentProgress: incidentProgress.filter(row => row.run_id === run.id),
           updatedAt: run.updated_at,
         } : null,
       }
@@ -1102,6 +1155,9 @@ async function handleAction(request: Request, body: Record<string, unknown>) {
       if (request.headers.has('x-admin-session')) await requireAdminSession(request, client)
       else requireOrganizer(request)
       return resetSession(client, body)
+    case 'delete-session':
+      await requireAdminSession(request, client)
+      return archiveSession(client, body)
     default:
       throw apiError('invalid_action', 400)
   }
