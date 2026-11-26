@@ -668,6 +668,8 @@ export function OrganizerDashboard() {
                                           <span className={`organizer-incident-status ${incident.status}`}>
                                             {incidentStatusLabel(incident.status)}
                                           </span>
+                                          {incident.status === 'resolved' && incident.resolutionCorrect !== null
+                                            && <small>{incident.resolutionCorrect ? 'Correct resolution' : 'Incorrect resolution'}</small>}
                                           {incident.resolvedAt && <time>{formatDate(incident.resolvedAt)}</time>}
                                         </li>
                                       ))}
@@ -706,6 +708,8 @@ export function OrganizerDashboard() {
                       <span className={`organizer-incident-status ${incident.status}`}>
                         {incidentStatusLabel(incident.status)}
                       </span>
+                      {incident.status === 'resolved' && incident.resolutionCorrect !== null
+                        && <small>{incident.resolutionCorrect ? 'Correct resolution' : 'Incorrect resolution'}</small>}
                       {incident.resolvedAt && <time>Resolved {formatDate(incident.resolvedAt)}</time>}
                     </li>)}</ul>
                 ) : <p>No persisted scenario progress.</p>}
@@ -816,6 +820,8 @@ export function OrganizerDashboard() {
                                               <span className={`organizer-incident-status ${incident.status}`}>
                                                 {incidentStatusLabel(incident.status)}
                                               </span>
+                                              {incident.status === 'resolved' && incident.resolutionCorrect !== null
+                                                && <small>{incident.resolutionCorrect ? 'Correct resolution' : 'Incorrect resolution'}</small>}
                                               {incident.resolvedAt && <time>{formatDate(incident.resolvedAt)}</time>}
                                             </li>
                                           ))}

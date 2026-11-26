@@ -69,7 +69,7 @@ Encounters run one at a time in the shuffled queue. The next one unlocks only wh
 
 `useGameEffects` (called once in `App.tsx`) handles these:
 
-- Hints appear by themselves after 10 s with no new evidence, then every 10 s, and stop once all key evidence is found. Contextual hints and action feedback are transient and fade after five seconds.
+- Hints appear by themselves after 10 s with no new evidence, then every 10 s, and stop once all key evidence is found. Action feedback is transient and fades after five seconds.
 - Wrong answers with a `glitch`, `antagonist` or `account_compromise` consequence glitch the screen. Restoring a save after a refresh doesn't replay them.
 
 Horror stage is handled directly in `App.tsx`. There is no idle timer for encounters: the next incident arrives when the engine unlocks it.

@@ -22,6 +22,8 @@ export function useParticipantRunSync(state: GameState, enabled: boolean) {
   const lastSaved = useRef('')
   const submittedRunId = useRef<string | null>(null)
   const saveQueue = useRef<Promise<void>>(Promise.resolve())
+  const persistedRunId = useRef<string | null>(null)
+  const persistedResolvedScenarios = useRef<Set<string>>(new Set())
 
   const progressSnapshot = useMemo(() => {
     if (!enabled || state.runMode !== 'event' || !state.eventRunId || state.phase === 'MAIN_MENU') return null
@@ -41,6 +43,16 @@ export function useParticipantRunSync(state: GameState, enabled: boolean) {
     if (!participant?.playerId) return
     if (!progressSnapshot || 'error' in progressSnapshot) return
     const { progress, serialized } = progressSnapshot
+    if (persistedRunId.current !== state.eventRunId) {
+      persistedRunId.current = state.eventRunId
+      persistedResolvedScenarios.current = new Set()
+    }
+    const resolvedScenarioIds = progress.scenarios
+      .filter(scenario => scenario.state === 'resolved' || scenario.state === 'completed')
+      .map(scenario => scenario.scenarioId)
+    const hasUnpersistedResolution = resolvedScenarioIds.some(
+      scenarioId => !persistedResolvedScenarios.current.has(scenarioId),
+    )
 
     const savedKey = `${state.eventRunId}:${serialized}`
     if (state.phase === 'RESULTS') {
@@ -53,6 +65,9 @@ export function useParticipantRunSync(state: GameState, enabled: boolean) {
         if (participant.completionStatus !== 'completed') {
           await saveParticipantRunProgress(participant, progress)
           lastSaved.current = savedKey
+          if (persistedRunId.current === state.eventRunId) {
+            for (const scenarioId of resolvedScenarioIds) persistedResolvedScenarios.current.add(scenarioId)
+          }
           try {
             await submitParticipantFiveScenarioResult(
               participant,
@@ -82,13 +97,16 @@ export function useParticipantRunSync(state: GameState, enabled: boolean) {
         setStatus('saving')
         await saveParticipantRunProgress(participant, progress)
         lastSaved.current = savedKey
+        if (persistedRunId.current === state.eventRunId) {
+          for (const scenarioId of resolvedScenarioIds) persistedResolvedScenarios.current.add(scenarioId)
+        }
         setStatus('saved')
         setError(null)
       }).catch(reason => {
         setStatus('error')
         setError(reason instanceof Error ? reason.message : 'Could not save event progress.')
       })
-    }, 250)
+    }, hasUnpersistedResolution ? 0 : 250)
     return () => window.clearTimeout(timer)
   }, [enabled, progressSnapshot, retryVersion, state])
 

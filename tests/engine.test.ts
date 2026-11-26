@@ -426,9 +426,8 @@ test('supporting protective actions are optional and cannot resolve an incident'
       return afterAction.resolutionActionFeedback?.message
     })
 
-    assert.notEqual(messages[0], messages[1])
-    assert.match(messages[0] ?? '', /removes the email/i)
-    assert.match(messages[1] ?? '', /prevents further email/i)
+    assert.notEqual(optionalActions[0]?.actionType, optionalActions[1]?.actionType)
+    assert.deepEqual(messages, ['Done.', 'Done.'])
   })
 
   assert.equal(afterSupport.phase, 'INVESTIGATION')
@@ -438,7 +437,7 @@ test('supporting protective actions are optional and cannot resolve an incident'
   assert.deepEqual(afterSupport.inspectedArtifacts, [])
   assert.deepEqual(afterSupport.performedPhoneInteractions[scenarioId], [support.id])
   assert.equal(afterSupport.resolutionActionFeedback?.outcome, 'supporting')
-  assert.match(afterSupport.resolutionActionFeedback?.message ?? '', /does not resolve the incident/i)
+  assert.equal(afterSupport.resolutionActionFeedback?.message, 'Done.')
 
   const primary = entry.action.interactions.find(item => item.id === entry.action.primaryInteractionId)!
   const resolved = gameReducer(afterSupport, {

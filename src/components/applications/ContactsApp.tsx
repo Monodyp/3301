@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { ArrowLeft, Phone, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Phone, MessageCircle, MoreHorizontal } from 'lucide-react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { Encounter } from '../../game/types'
 import type { Game } from '../../game/useGame'
@@ -18,6 +18,7 @@ export function ContactsApp({ game, data, encounter }: { game: Game; data?: Char
   const [selected, setSelected] = useState<number | null>(null)
   const [callActive, setCallActive] = useState(false)
   const [messageOpen, setMessageOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [messageText, setMessageText] = useState('')
   const contactsData = data?.contacts ?? contacts
   const contactArtifact = encounter?.artifacts.find(artifact => artifact.app === 'contacts')
@@ -34,6 +35,8 @@ export function ContactsApp({ game, data, encounter }: { game: Game; data?: Char
   const callInteractions = interactionsFor(game, 'contacts', 'contact-call')
   const messageInteractions = interactionsFor(game, 'contacts', 'contact-message')
   const protectiveMenuActions = interactionsFor(game, 'contacts', 'menu-item')
+  const showContactMenu = protectiveMenuActions.length > 0
+    && (!expectedContact || selectedContact?.name === expectedContact)
   const submitMessage = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const text = messageText.trim().toLowerCase()
@@ -54,7 +57,27 @@ export function ContactsApp({ game, data, encounter }: { game: Game; data?: Char
     )
     return (
       <div className="app-content contact-detail" ref={clueRef}>
-        <button className="detail-back" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Contacts</button>
+        <div className="contact-detail-toolbar">
+          <button className="detail-back" onClick={() => { setSelected(null); setMenuOpen(false) }}><ArrowLeft size={18} /> Contacts</button>
+          {showContactMenu && (
+            <div className="contact-options-anchor">
+              <button aria-label="Contact options" onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>
+              {menuOpen && (
+                <div className="native-phone-menu" role="menu">
+                  {protectiveMenuActions.map(interaction => (
+                    <ScenarioPhoneInteraction
+                      key={interaction.id}
+                      game={game}
+                      interaction={interaction}
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="large-avatar" style={{ background: contact.color }}>{contact.name[0]}</div>
         <h2>{contact.name}</h2><p>{contact.role}</p>
         {contactArtifact && (!expectedContact || expectedContact === contact.name) && (
@@ -70,14 +93,6 @@ export function ContactsApp({ game, data, encounter }: { game: Game; data?: Char
             ? <button onClick={() => setMessageOpen(value => !value)}><MessageCircle size={20} /><span>message</span></button>
             : <button><MessageCircle size={20} /><span>message</span></button>}
         </div>
-        {protectiveMenuActions.length > 0
-          && (!expectedContact || selectedContact?.name === expectedContact) && (
-          <section className="native-contact-actions" aria-label="Contact safety actions">
-            {protectiveMenuActions.map(interaction => (
-              <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} />
-            ))}
-          </section>
-        )}
         {callActive && matchingCallInteractions.length > 0 && (
           <div className="contact-call-panel" aria-live="polite">
             <span>Connected · saved contact</span>
@@ -99,7 +114,7 @@ export function ContactsApp({ game, data, encounter }: { game: Game; data?: Char
       <div className="search-field">Search contacts</div>
       <div className="contact-list">
         {contactsData.map((contact, index) => (
-          <button key={contact.name} onClick={() => { setCallActive(false); setMessageOpen(false); setSelected(index) }}>
+          <button key={contact.name} onClick={() => { setCallActive(false); setMessageOpen(false); setMenuOpen(false); setSelected(index) }}>
             <div className="avatar" style={{ background: contact.color }}>{contact.name[0]}</div>
             <div><strong>{contact.name}</strong><span>{contact.role}</span></div>
           </button>

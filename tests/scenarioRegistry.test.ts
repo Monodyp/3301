@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 
 import { CHARACTERS, getEncounter, validateContent } from '../src/game/content/index.ts'
 import { CHARACTER_PHONE_DATA } from '../src/data/characterData.ts'
-import { nextActionNavigationHint, trustedLocalSearch } from '../src/components/applications/phoneInteractionUtils.ts'
+import { trustedLocalSearch } from '../src/components/applications/phoneInteractionUtils.ts'
 import {
   BACKEND_SCENARIO_IDS,
   PROTECTIVE_ACTION_CATALOG,
@@ -70,7 +70,6 @@ test('every action is grounded in the authored correct choice and has its own ID
     assert.ok(entry.action.primaryAction.length > 0)
     assert.ok(entry.action.successCondition.length > 0)
     assert.ok(entry.action.playerDescription.length > 0)
-    assert.ok(entry.action.contextHint.length > 0)
     assert.deepEqual(entry.action.incorrectBehavior, {
       kind: 'leave-unresolved',
       resolvesIncident: false,
@@ -119,20 +118,6 @@ test('every scenario has one valid primary action in its native application', ()
     assert.ok(primary.actionType, `${entry.scenarioId} primary maps to the shared catalog`)
     assert.equal(primary.actionType, expectedPrimaryActions[entry.scenarioId], `${entry.scenarioId} primary mapping`)
     assert.equal(PROTECTIVE_ACTION_CATALOG[primary.actionType].surface, primary.surface, `${entry.scenarioId} catalog surface`)
-  }
-})
-
-test('evidence unlocks a destination cue for the primary app without revealing its action', () => {
-  for (const entry of SCENARIO_REGISTRY) {
-    const primary = entry.action.interactions.find(interaction => interaction.id === entry.action.primaryInteractionId)!
-    const otherSurface = SUPPORTED_PHONE_SURFACES.find(surface => surface !== primary.surface)!
-    assert.equal(
-      nextActionNavigationHint(entry.action, [], otherSurface),
-      `Continue this incident in ${primary.surface[0]!.toUpperCase()}${primary.surface.slice(1)}.`,
-      `${entry.scenarioId} primary navigation cue`,
-    )
-    assert.equal(nextActionNavigationHint(entry.action, [], primary.surface), null)
-    assert.equal(nextActionNavigationHint(entry.action, [primary.id], otherSurface), null)
   }
 })
 

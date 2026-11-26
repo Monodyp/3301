@@ -1,28 +1,6 @@
 import type { Game } from '../../game/useGame'
-import type { PhoneSurface, ResolutionAction, ScenarioPhoneInteraction } from '../../game/scenarioRegistry'
+import type { PhoneSurface, ScenarioPhoneInteraction } from '../../game/scenarioRegistry'
 import type { Artifact } from '../../game/types'
-import type { AppId } from '../../types'
-
-export const PHONE_SURFACE_LABELS: Record<PhoneSurface, string> = {
-  messages: 'Messages',
-  social: 'Social',
-  email: 'Email',
-  browser: 'Browser',
-  contacts: 'Contacts',
-  calls: 'Calls',
-  wallet: 'Wallet',
-  settings: 'Settings',
-}
-
-export function nextActionNavigationHint(
-  action: Pick<ResolutionAction, 'primaryInteractionId' | 'interactions'>,
-  completedInteractionIds: readonly string[],
-  currentSurface: AppId | null,
-): string | null {
-  const primary = action.interactions.find(interaction => interaction.id === action.primaryInteractionId)
-  if (!primary || completedInteractionIds.includes(primary.id) || primary.surface === currentSurface) return null
-  return `Continue this incident in ${PHONE_SURFACE_LABELS[primary.surface]}.`
-}
 
 export type TrustedSearchOutcome =
   | { kind: 'miss'; title: string; detail: string }
@@ -41,7 +19,7 @@ export function trustedLocalSearch(
     return {
       kind: 'miss',
       title: 'No matching local result',
-      detail: 'Try a name or organization from the message. External sites are not opened.',
+      detail: 'No results found.',
     }
   }
 

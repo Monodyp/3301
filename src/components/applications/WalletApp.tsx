@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { Coffee, TrainFront, ShoppingBag } from 'lucide-react'
+import { Coffee, TrainFront, ShoppingBag, MoreHorizontal } from 'lucide-react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { AppliedConsequence } from '../../game/types'
 import type { Game } from '../../game/useGame'
 import { usePassiveClueTarget } from '../investigation/PassiveClueTarget'
 import { ScenarioPhoneInteraction } from './ScenarioPhoneInteraction'
-import { interactionsFor } from './phoneInteractionUtils'
+import { interactionsFor, primaryInteractionFor } from './phoneInteractionUtils'
 
 export function WalletApp({ game, data, balance, consequences = [] }: { game: Game; data?: CharacterPhoneData; balance?: number; consequences?: AppliedConsequence[] }) {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<number | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const consequenceTransactions = consequences.filter(item => item.kind === 'balance_loss').map(item => ({
     name: 'Unverified payment',
     detail: item.encounterId,
@@ -17,6 +18,8 @@ export function WalletApp({ game, data, balance, consequences = [] }: { game: Ga
   }))
   const transactions = [...consequenceTransactions, ...(data?.walletTransactions ?? [])]
   const paymentInteractions = interactionsFor(game, 'wallet', 'payment-send', 'payment-decline', 'menu-item')
+  const primaryPaymentAction = primaryInteractionFor(game, 'wallet')
+  const paymentMenuActions = paymentInteractions.filter(interaction => interaction.id !== primaryPaymentAction?.id)
   const hasPaymentRequest = Boolean(game.encounter?.artifacts.some(artifact => artifact.app === 'wallet') || paymentInteractions.length > 0)
   const paymentArtifact = game.encounter?.artifacts.find(artifact => artifact.app === 'wallet')
   const transactionHistoryReviewed = Boolean(game.encounter && game.state.performedPhoneInteractions[game.encounter.id]?.some(id =>
@@ -36,21 +39,35 @@ export function WalletApp({ game, data, balance, consequences = [] }: { game: Ga
             <button onClick={() => setPaymentOpen(true)}>Pending payment request</button>
           ) : (
             <div ref={paymentClueRef}>
-              <button className="detail-back" onClick={() => setPaymentOpen(false)}>Wallet</button>
+              <button className="detail-back" onClick={() => { setPaymentOpen(false); setMenuOpen(false) }}>Wallet</button>
               <h3>Payment request</h3>
               <strong>{game.encounter?.trigger.sender}</strong>
               <p>{game.encounter?.trigger.message}</p>
               {paymentArtifact && <p className="wallet-recipient-detail" data-clue-target={paymentArtifact.id}>{paymentArtifact.detail}</p>}
-              <div className="wallet-native-actions" aria-label="Payment request options">
-                {paymentInteractions.map(interaction => (
-                  <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction}>
-                    {interaction.control === 'payment-send'
-                      ? `Send${interaction.label.match(/₱[\d,]+/) ? ` ${interaction.label.match(/₱[\d,]+/)?.[0]}` : ''}`
-                      : interaction.control === 'payment-decline'
-                        ? /campus|office/i.test(interaction.label) ? 'Use campus payment' : 'Decline'
-                        : interaction.label}
+              <div className="wallet-payment-controls">
+                {primaryPaymentAction && (
+                  <ScenarioPhoneInteraction game={game} interaction={primaryPaymentAction} className="wallet-decline-action">
+                    {primaryPaymentAction.control === 'payment-decline' ? 'Decline' : undefined}
                   </ScenarioPhoneInteraction>
-                ))}
+                )}
+                {paymentMenuActions.length > 0 && (
+                  <div className="wallet-options-anchor">
+                    <button aria-label="Payment options" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={19} /></button>
+                    {menuOpen && (
+                      <div className="native-phone-menu" role="menu">
+                        {paymentMenuActions.map(interaction => (
+                          <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} role="menuitem" onClick={() => setMenuOpen(false)}>
+                            {interaction.control === 'payment-send'
+                              ? `Send${interaction.label.match(/₱[\d,]+/) ? ` ${interaction.label.match(/₱[\d,]+/)?.[0]}` : ''}`
+                              : interaction.control === 'payment-decline'
+                                ? /campus|office/i.test(interaction.label) ? 'Use campus payment' : 'Decline'
+                                : undefined}
+                          </ScenarioPhoneInteraction>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -62,7 +79,6 @@ export function WalletApp({ game, data, balance, consequences = [] }: { game: Ga
           <strong>Request under review · {game.encounter?.trigger.sender}</strong>
           <p>{game.encounter?.trigger.message}</p>
           <p>{paymentArtifact.detail}</p>
-          <small>Reviewing this request does not send money or resolve the incident.</small>
         </section>
       )}
       <div className="transaction-list">

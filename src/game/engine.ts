@@ -27,7 +27,6 @@ import { getEncounterNarrative } from './content/scenarios.ts'
 import {
   getScenarioDefinition,
   isScenarioId,
-  PROTECTIVE_ACTION_CATALOG,
   validateScenarioAssignment,
   type PhoneSurface,
   type ResolutionActionId,
@@ -530,9 +529,6 @@ function performPhoneInteraction(
     const supportingStep = interaction.stepId
       ? entry.action.steps.find(candidate => candidate.id === interaction.stepId)
       : undefined
-    const catalogAction = interaction.actionType
-      ? PROTECTIVE_ACTION_CATALOG[interaction.actionType]
-      : undefined
     return {
       ...state,
       performedPhoneInteractions,
@@ -545,9 +541,7 @@ function performPhoneInteraction(
         actionId: entry.action.id,
         stepId: supportingStep?.id ?? entry.action.steps[0]!.id,
         outcome: 'supporting',
-        message: catalogAction
-          ? `${catalogAction.title} completed. ${catalogAction.description} The supporting action does not resolve the incident; it remains active.`
-          : `${supportingStep?.confirmation ?? interaction.label} This supporting action does not resolve the incident; it remains active.`,
+        message: 'Done.',
         corruptionLevel,
       },
       lastProgressAt: action.now,
@@ -569,7 +563,7 @@ function performPhoneInteraction(
       encounterId: action.scenarioId,
       kind: consequence.kind,
       amount: consequence.amount,
-      message: consequence.message ?? wrongChoice.outcome,
+      message: 'Action not completed.',
       severity: interaction.severity,
     },
   ]
@@ -660,7 +654,7 @@ function performProtectiveAction(
       actionId: action.actionId,
       stepId: step.id,
       outcome: actionComplete ? 'resolved' : 'step-completed',
-      message: step.confirmation,
+      message: 'Done.',
     },
     lastProgressAt: action.now,
   }
@@ -688,7 +682,7 @@ function rejectProtectiveAction(
       actionId,
       stepId: expectedStep.id,
       outcome: 'rejected',
-      message: 'That action had no effect. The incident is still active.',
+      message: 'Action not completed.',
     },
   }
 }

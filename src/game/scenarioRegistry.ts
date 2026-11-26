@@ -78,7 +78,7 @@ export const PROTECTIVE_ACTION_CATALOG = {
   reportPhishingEmail: { surface: 'email', title: 'Report phishing', description: 'Flags the email for review; the message remains available, the sender is not blocked, and this report cannot be retracted here.' },
   deleteEmail: { surface: 'email', title: 'Delete email', description: 'Removes the email from the inbox; it may be recoverable from Trash and this does not report or block the sender.' },
   blockEmailSender: { surface: 'email', title: 'Block sender', description: 'Prevents further email from this sender; blocking can be reversed in mail settings.' },
-  verifyEmailSender: { surface: 'email', title: 'Verify sender and terms', description: 'Checks the sender and request independently before agreeing; no commitment is made.' },
+  verifyEmailSender: { surface: 'email', title: 'Verify sender', description: 'Checks the sender and request independently before agreeing; no commitment is made.' },
   refuseEmailRequest: { surface: 'email', title: 'Refuse request', description: 'Declines the request without complying or sharing private information.' },
   declinePayment: { surface: 'wallet', title: 'Decline payment request', description: 'Declines this request without sending money; it does not report or block the recipient.' },
   cancelTransfer: { surface: 'wallet', title: 'Cancel pending transfer', description: 'Attempts to stop a pending transfer; only available while a transfer is pending.' },
@@ -138,7 +138,6 @@ export interface ResolutionAction {
   readonly primaryAction: string
   readonly surface: PhoneSurface
   readonly primaryInteractionId: string
-  readonly contextHint: string
   readonly parameters: readonly ActionParameter[]
   readonly steps: readonly ResolutionActionStep[]
   readonly interactions: readonly ScenarioPhoneInteraction[]
@@ -265,7 +264,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Block the unverified account and keep private information protected.',
       surface: 'messages',
       primaryInteractionId: 'mk-a1.correct-1',
-      contextHint: 'The conversation is moving off-platform and asks for private details.',
       parameters: [],
       steps: actionSteps(
         ['messages', 'Block the unverified account', 'The unverified account can no longer contact Mika.'],
@@ -302,7 +300,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Leave the hostile group, preserve evidence, and report credible threats through proper channels.',
       surface: 'social',
       primaryInteractionId: 'mk-a2.correct-2',
-      contextHint: 'The group is discouraging disagreement and targeting people who leave.',
       parameters: [],
       steps: actionSteps(
         ['social', 'Save the threatening post', 'The post is preserved.'],
@@ -339,7 +336,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Report the suspicious sponsorship email and review its claims independently.',
       surface: 'email',
       primaryInteractionId: 'mk-a3.correct-1',
-      contextHint: 'The offer is urgent, but its terms and sender are not yet verified.',
       parameters: [],
       steps: actionSteps(
         ['email', 'Report the suspicious sponsorship email', 'The email was flagged for review; the sender was not blocked.'],
@@ -379,7 +375,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Report the suspicious email and review account status through an official channel.',
       surface: 'email',
       primaryInteractionId: 'mk-r1.correct-1',
-      contextHint: 'The account warning arrived through an unexpected email link.',
       parameters: [],
       steps: actionSteps(
         ['email', 'Report the suspicious account warning', 'The email was flagged; the sender was not blocked or deleted.'],
@@ -414,7 +409,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Refuse the deposit, verify the company independently, and keep the messages.',
       surface: 'wallet',
       primaryInteractionId: 'mk-r2.correct-1',
-      contextHint: 'The request asks for money before the promised sponsorship is confirmed.',
       parameters: [],
       steps: actionSteps(
         ['wallet', 'Decline the deposit request', 'No deposit was sent.'],
@@ -454,7 +448,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Report the suspected moderator account and keep the verification code private.',
       surface: 'social',
       primaryInteractionId: 'mk-r3.correct-1',
-      contextHint: 'The moderator’s message does not match their usual behavior and asks for a code.',
       parameters: [],
       steps: actionSteps(
         ['social', 'Report the compromised moderator account', 'The account was flagged for review; the verification code stayed private.'],
@@ -492,7 +485,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Verify the agency, review the contract, and get qualified advice before giving up account or money control.',
       surface: 'email',
       primaryInteractionId: 'mk-o1.correct-1',
-      contextHint: 'The agreement offers broad account control, while the agency details are unclear.',
       parameters: [],
       steps: actionSteps(
         ['email', 'Verify the sender and review the full contract', 'The sender and contract were checked before any account access was granted.'],
@@ -529,7 +521,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Refuse to run the unverified attachment and keep device protection enabled.',
       surface: 'messages',
       primaryInteractionId: 'mk-o2.correct-1',
-      contextHint: 'The installer is unexpected, and its publisher is not verified.',
       parameters: [],
       steps: actionSteps(
         ['messages', 'Do not open or run the file', 'The unverified file was not run.'],
@@ -569,7 +560,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Keep lab access limited, verify Lance through Ben or an official channel, and share only public schedules.',
       surface: 'messages',
       primaryInteractionId: 'rf-a1.correct-1',
-      contextHint: 'The request involves private lab tools and access, not just public schedule details.',
       parameters: [],
       steps: actionSteps(
         ['messages', 'Decline unsupervised lab access', 'Restricted access remains protected.'],
@@ -606,7 +596,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Leave the group, preserve evidence, and report credible threats through the lab coordinator.',
       surface: 'social',
       primaryInteractionId: 'rf-a2.correct-3',
-      contextHint: 'The group is urging unsupervised activity and threatening anyone who reports it.',
       parameters: [],
       steps: actionSteps(
         ['social', 'Preserve the threatening post', 'The post is preserved.'],
@@ -642,7 +631,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Independently verify the recruiter and request a contract with authorized scope.',
       surface: 'browser',
       primaryInteractionId: 'rf-a3.correct-1',
-      contextHint: 'The recruiter offers travel before Rafa has a verified contract or clear work scope.',
       parameters: [],
       steps: actionSteps(
         ['browser', 'Verify the recruiter independently', 'The recruiter was checked outside the email.'],
@@ -679,7 +667,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Type the official lab address, verify the notice in the real dashboard, and report the email.',
       surface: 'browser',
       primaryInteractionId: 'rf-r1.correct-1',
-      contextHint: 'The recovery warning came from an email link; the lab portal has a known local address.',
       parameters: [],
       steps: actionSteps(
         ['browser', 'Type the official lab address and check the dashboard', 'The notice was checked through the official dashboard.'],
@@ -713,7 +700,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Decline personal payment and use the campus office’s verified payment channel.',
       surface: 'wallet',
       primaryInteractionId: 'rf-r2.correct-1',
-      contextHint: 'The repair request asks for a personal payment instead of using the campus office.',
       parameters: [],
       steps: actionSteps(
         ['wallet', 'Decline the personal payment request', 'No personal payment was sent.'],
@@ -751,7 +737,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Do not share the code; verify Ben through a known number and alert the coordinator.',
       surface: 'contacts',
       primaryInteractionId: 'rf-r3.correct-1',
-      contextHint: 'Ben’s request changed suddenly and asks Rafa to share a reset code.',
       parameters: [],
       steps: actionSteps(
         ['contacts', 'Call Ben using his saved number without sharing the reset code', 'Ben was reached through a known number; the reset code stayed private.'],
@@ -786,7 +771,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Refuse account sharing and request a standard interview process.',
       surface: 'email',
       primaryInteractionId: 'rf-o1.correct-1',
-      contextHint: 'The offer asks for personal account access and lab documents before a normal interview.',
       parameters: [],
       steps: actionSteps(
         ['email', 'Decline account and document sharing', 'Accounts and lab documents remain private.'],
@@ -823,7 +807,6 @@ export const SCENARIO_REGISTRY = [
       primaryAction: 'Do not run the installer or disable protection; verify the recruiter and request a safer test environment.',
       surface: 'settings',
       primaryInteractionId: 'rf-o2.correct-1',
-      contextHint: 'The installer is unverified, and the sender asks Rafa to weaken device protection.',
       parameters: [],
       steps: actionSteps(
         ['settings', 'Reject the unverified installer and keep protection enabled', 'The unverified installer was rejected while device protection stayed enabled.'],
@@ -834,7 +817,7 @@ export const SCENARIO_REGISTRY = [
         ...phoneInteractions(
         3,
         [
-          ['settings', 'security-toggle', 'Reject the installer and keep protection enabled', undefined, undefined, true, 'rejectInstallation'],
+          ['settings', 'security-toggle', 'Reject installation', undefined, undefined, true, 'rejectInstallation'],
           ['email', 'attachment', 'Remove installer without opening'],
           ['email', 'reply', 'Send: “Please provide a safe test environment.”'],
         ],
@@ -957,7 +940,6 @@ export function validateScenarioRegistry(
       problems.push(`${entry.scenarioId}: NPC phone does not include ${entry.action.surface}`)
     }
     if (!entry.action.primaryAction.trim()) problems.push(`${entry.scenarioId}: primary action is empty`)
-    if (!entry.action.contextHint.trim()) problems.push(`${entry.scenarioId}: subtle context hint is empty`)
     const primaryInteraction = entry.action.interactions.find(item => item.id === entry.action.primaryInteractionId)
     if (!primaryInteraction || primaryInteraction.classification !== 'correct') {
       problems.push(`${entry.scenarioId}: primary action must reference a correct native interaction`)

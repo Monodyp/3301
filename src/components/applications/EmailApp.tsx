@@ -7,7 +7,7 @@ import { PHONE_TARGETS } from '../../game/narrative'
 import { usePassiveClueTarget } from '../investigation/PassiveClueTarget'
 import { ReadMarker } from './ReadMarker'
 import { ScenarioPhoneInteraction } from './ScenarioPhoneInteraction'
-import { interactionsFor, primaryInteractionFor } from './phoneInteractionUtils'
+import { interactionsFor } from './phoneInteractionUtils'
 
 const INCIDENT = -1
 
@@ -43,12 +43,9 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
     (selected !== null && selected !== INCIDENT)
     || (selected === INCIDENT && incident?.trigger.app !== 'email'),
   ))
-  const primaryMenuAction = primaryInteractionFor(game, 'email')
-  const inlinePrimaryMenuAction = primaryMenuAction?.control === 'menu-item' ? primaryMenuAction : undefined
   const menuItems = (selected === INCIDENT
     ? interactionsFor(game, 'email', 'menu-item')
     : [])
-    .filter(interaction => interaction.id !== inlinePrimaryMenuAction?.id)
   const replies = interactionsFor(game, 'email', 'reply')
   const attachments = interactionsFor(game, 'email', 'attachment')
   const links = interactionsFor(game, 'email', 'link')
@@ -61,13 +58,11 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
           game={game}
           interaction={interaction}
           role="menuitem"
-          onClick={interaction.actionType === 'deleteEmail' ? () => {
+          onClick={() => {
             setSelected(null)
             setMenuOpen(false)
-          } : undefined}
-        >
-          {interaction.label}
-        </ScenarioPhoneInteraction>
+          }}
+        />
       ))}
     </div>
   )
@@ -100,7 +95,7 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
     if (selected === INCIDENT && incident) {
       return (
         <div className="app-content email-detail">
-          <div className="email-toolbar"><button className="detail-back" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Inbox</button>{menuItems.length > 0 && <button aria-label="Message options" onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}{menuOpen && menu}</div>
+          <div className="email-toolbar"><button className="detail-back" onClick={() => { setSelected(null); setMenuOpen(false) }}><ArrowLeft size={18} /> Inbox</button>{menuItems.length > 0 && <button aria-label="Message options" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}{menuOpen && menu}</div>
           <h2>{incident.trigger.app === 'email' ? incident.trigger.title : supportingEmailArtifacts[0]?.label ?? incident.trigger.title}</h2>
           <div className="email-sender"><div className="avatar">!</div><div><strong>{incident.trigger.sender}</strong><span>to me</span></div><time>now</time></div>
           <div ref={incident.trigger.app === 'email' ? incidentClueRef : appClueRef}>
@@ -131,12 +126,6 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
           {(sentReplies[incident.id] ?? []).map((reply, index) => <div key={`sent-${index}`} className="email-thread-item me"><strong>{data?.profile.name ?? 'Me'}</strong><p>{reply}</p><time>now</time></div>)}
           {attachmentCard}
           {safeLinks}
-          {inlinePrimaryMenuAction && (
-            <section className="native-primary-action" aria-label="Primary protective action">
-              <span>Primary response</span>
-              <ScenarioPhoneInteraction game={game} interaction={inlinePrimaryMenuAction} />
-            </section>
-          )}
           <ReadMarker key={targetFor(INCIDENT)} onRead={markRead(INCIDENT)} />
           {archive}
           {renderReplyComposer(incident.id)}
@@ -147,7 +136,7 @@ export function EmailApp({ game, data, encounter, onPhoneEvent }: { game: Game; 
     if (!email) return null
     return (
       <div className="app-content email-detail">
-        <div className="email-toolbar"><button className="detail-back" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Inbox</button>{menuItems.length > 0 && <button aria-label="Message options" onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}{menuOpen && menu}</div>
+        <div className="email-toolbar"><button className="detail-back" onClick={() => { setSelected(null); setMenuOpen(false) }}><ArrowLeft size={18} /> Inbox</button>{menuItems.length > 0 && <button aria-label="Message options" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}{menuOpen && menu}</div>
         <h2>{email.subject}</h2>
         <div className="email-sender"><div className="avatar">{email.sender[0]}</div><div><strong>{email.sender}</strong><span>to me</span></div><time>{email.time}</time></div>
         <div ref={appClueRef}>

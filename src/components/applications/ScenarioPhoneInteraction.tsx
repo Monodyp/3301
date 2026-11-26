@@ -24,31 +24,20 @@ export function ScenarioPhoneInteraction({
   parameters?: Readonly<Record<string, string>>
 }) {
   if (!game.encounter?.id || !game.resolutionAction || game.resolutionAction.scenarioId !== game.encounter.id) return null
-  const isPrimary = game.resolutionAction.action.primaryInteractionId === interaction.id
-  const actionDetails = interaction.actionType
-    ? PROTECTIVE_ACTION_CATALOG[interaction.actionType]
-    : null
-  const detail = interaction.classification === 'incorrect'
-    ? 'Unsafe option · consequences apply, and the incident remains unresolved.'
-    : isPrimary
-      ? `Primary response · ${actionDetails?.description ?? 'This resolves the incident.'} Resolves this incident.`
-      : actionDetails
-        ? `Optional support · ${actionDetails.description} Does not resolve the incident by itself.`
-        : 'Optional supporting action · does not resolve the incident by itself.'
+  const action = interaction.actionType ? PROTECTIVE_ACTION_CATALOG[interaction.actionType] : null
+  const accessibleLabel = children === undefined ? action?.title ?? interaction.label : undefined
   return (
     <button
       className={`native-phone-interaction native-interaction-${interaction.control} ${className}`.trim()}
       aria-pressed={pressed}
-      aria-label={detail ? `${interaction.label}. ${detail}` : undefined}
-      title={detail ?? undefined}
+      aria-label={accessibleLabel}
       role={role}
       onClick={() => {
         onClick?.()
         performPhoneInteraction(game, interaction, parameters)
       }}
     >
-      {children ?? interaction.label}
-      {detail && <small className="native-interaction-detail">{detail}</small>}
+      {children ?? action?.title ?? interaction.label}
     </button>
   )
 }

@@ -1,38 +1,15 @@
 import type { Category } from '../../game/types'
 import type { Game } from '../../game/useGame'
-import { EDUCATIONAL_DEBRIEF, feedbackForDecision } from '../../game/educational'
+import { EDUCATIONAL_DEBRIEF } from '../../game/educational'
 
 export function FeedbackCard({ game, onContinue }: { game: Game; onContinue: () => void }) {
   const encounter = game.encounter
   const decision = game.lastDecision
   if (!encounter || !decision) return null
-  const feedback = feedbackForDecision(encounter, decision)
-  const isEventRun = game.state.runMode === 'event'
   return (
-    <aside className="feedback-card" role="dialog" aria-label={isEventRun ? 'Protective action feedback' : 'Decision feedback'}>
-      <span className={`feedback-result ${decision.correct ? 'correct' : 'incorrect'}`}>
-        {isEventRun ? 'Incident secured' : feedback.result}
-      </span>
-      <h2>{decision.correct ? 'Secure response' : 'Risky response — here is a safer way'}</h2>
-      <div className="feedback-section">
-        <strong>Why this mattered</strong>
-        <p>{decision.correct ? feedback.principle : feedback.selectedOutcome}</p>
-      </div>
-      {!decision.correct && feedback.saferChoice && (
-        <div className="feedback-section safer-choice">
-          <strong>Safer choice</strong>
-          <p>{feedback.saferChoice}</p>
-        </div>
-      )}
-      <div className="feedback-section">
-        <strong>Security principle</strong>
-        <p>{feedback.principle}</p>
-      </div>
-      <div className="feedback-section">
-        <strong>Recommended action</strong>
-        <p>{feedback.recommendedAction}</p>
-      </div>
-      <div className="feedback-category">{labelCategory(feedback.category)}</div>
+    <aside className="feedback-card" role="dialog" aria-label="Incident update">
+      <span className="feedback-result">Incident update</span>
+      <h2>{decision.correct ? 'Incident resolved' : 'Incident continues'}</h2>
       <button onClick={onContinue}>Continue</button>
     </aside>
   )

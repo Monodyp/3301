@@ -72,7 +72,6 @@ export function DecisionSheet({ game }: { game: Game }) {
       <span className="decision-context-label">{encounter.title} · {encounter.trigger.sender}</span>
       <blockquote className="decision-context">{encounter.trigger.message}</blockquote>
       <strong id="decision-prompt">{decision.prompt}</strong>
-      <p>{encounter.lesson}</p>
       <div className="decision-options">
         {game.choices.map(option => (
           <button

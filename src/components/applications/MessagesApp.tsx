@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { ArrowLeft, MoreHorizontal } from 'lucide-react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { ConversationData } from '../../data/characterData'
@@ -8,7 +8,7 @@ import { PHONE_TARGETS } from '../../game/narrative'
 import { usePassiveClueTarget } from '../investigation/PassiveClueTarget'
 import { ReadMarker } from './ReadMarker'
 import { ScenarioPhoneInteraction } from './ScenarioPhoneInteraction'
-import { interactionsFor, primaryInteractionFor } from './phoneInteractionUtils'
+import { interactionsFor } from './phoneInteractionUtils'
 
 const INCIDENT = -1
 
@@ -43,22 +43,27 @@ export function MessagesApp({ game, data, encounter, onPhoneEvent }: { game: Gam
   const appClueRef = usePassiveClueTarget(game, 'messages', 'app', Boolean(
     (selected !== null && !isIncident(selected)) || selectedArtifact,
   ))
-  const primaryMenuAction = primaryInteractionFor(game, 'messages')
-  const inlinePrimaryMenuAction = primaryMenuAction?.control === 'menu-item' ? primaryMenuAction : undefined
+  const chatThreadRef = selected !== null && incident && isIncident(selected)
+    ? incidentClueRef
+    : appClueRef
+  useLayoutEffect(() => {
+    if (selected === null) return
+    const thread = chatThreadRef.current
+    if (thread) thread.scrollTop = thread.scrollHeight
+  }, [chatThreadRef, selected, sentReplies, sentIncidentReplies])
   const menuItems = (selected !== null && incident && isIncident(selected)
     ? interactionsFor(game, 'messages', 'menu-item')
     : [])
-    .filter(interaction => interaction.id !== inlinePrimaryMenuAction?.id)
   const replies = interactionsFor(game, 'messages', 'reply')
   const attachments = interactionsFor(game, 'messages', 'attachment')
   const preserve = interactionsFor(game, 'messages', 'preserve')
   const messageMenu = menuItems.length > 0 && (
     <div className="native-phone-menu" role="menu">
-      {menuItems.map(interaction => <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} role="menuitem">{interaction.label}</ScenarioPhoneInteraction>)}
+      {menuItems.map(interaction => <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} role="menuitem" onClick={() => setMenuOpen(false)} />)}
     </div>
   )
   const renderReplyComposer = (onSend: (text: string) => void) => replies.length > 0 && (
-    <div className="native-reply-options" aria-label="Message replies">
+    <div className="native-reply-options message-reply-options" aria-label="Message replies">
       {replies.map(interaction => {
         const text = interaction.label.replace(/^Send:\s*/, '')
         return (
@@ -103,7 +108,7 @@ export function MessagesApp({ game, data, encounter, onPhoneEvent }: { game: Gam
   if (selected !== null) {
     if (selected === INCIDENT && incident) return (
       <div className="app-content chat-view">
-        <div className="chat-header"><button onClick={() => setSelected(null)} aria-label="Back to conversations"><ArrowLeft size={20} /></button><strong>{incident.trigger.sender}</strong>{menuItems.length > 0 && <button aria-label="Conversation options" onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}{menuOpen && messageMenu}</div>
+        <div className="chat-header"><button onClick={() => { setSelected(null); setMenuOpen(false) }} aria-label="Back to conversations"><ArrowLeft size={20} /></button><strong>{incident.trigger.sender}</strong>{menuItems.length > 0 && <button aria-label="Conversation options" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}{menuOpen && messageMenu}</div>
         <div className="chat-thread" ref={incidentClueRef}>
           <div className="chat-bubble them" data-clue-target={incidentClueIds[0]}>
             <span>{incident.trigger.message}</span><time>now</time>
@@ -117,14 +122,12 @@ export function MessagesApp({ game, data, encounter, onPhoneEvent }: { game: Gam
           <ReadMarker key={targetFor(INCIDENT)} onRead={markRead(INCIDENT)} />
           {attachmentCard}
           {saveConversation}
-          {inlinePrimaryMenuAction && (
-            <section className="native-primary-action" aria-label="Primary protective action">
-              <span>Primary response</span>
-              <ScenarioPhoneInteraction game={game} interaction={inlinePrimaryMenuAction} />
-            </section>
-          )}
-          {renderReplyComposer(text => setSentIncidentReplies(current => ({ ...current, [incident.id]: [...(current[incident.id] ?? []), text] })))}
         </div>
+        {replies.length > 0 && (
+          <div className="canned-replies chat-reply-composer" aria-label="Message replies">
+            {renderReplyComposer(text => setSentIncidentReplies(current => ({ ...current, [incident.id]: [...(current[incident.id] ?? []), text] })))}
+          </div>
+        )}
       </div>
     )
     const conversation = conversationsData.find(item => item.id === selected) ?? conversationsData[0]
@@ -134,10 +137,10 @@ export function MessagesApp({ game, data, encounter, onPhoneEvent }: { game: Gam
     return (
       <div className="app-content chat-view">
         <div className="chat-header">
-          <button onClick={() => setSelected(null)} aria-label="Back to conversations"><ArrowLeft size={20} /></button>
+          <button onClick={() => { setSelected(null); setMenuOpen(false) }} aria-label="Back to conversations"><ArrowLeft size={20} /></button>
           <div className="avatar" style={{ background: conversation.color }}>{conversation.name[0]}</div>
           <strong>{conversation.name}</strong>
-          {menuItems.length > 0 && <button aria-label="Conversation options" onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}
+          {menuItems.length > 0 && <button aria-label="Conversation options" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={20} /></button>}
           {menuOpen && messageMenu}
         </div>
         <div className="chat-thread" ref={isIncident(conversation.id) ? incidentClueRef : appClueRef}>
@@ -166,8 +169,11 @@ export function MessagesApp({ game, data, encounter, onPhoneEvent }: { game: Gam
           {attachmentCard}
           {saveConversation}
         </div>
-        <div className="canned-replies" aria-label="Canned replies">
-          {(replies.length > 0 ? [] : conversation.cannedReplies ?? ['I am going to verify this first.', 'I will not share private information.']).map(reply => (
+        <div
+          className={`canned-replies${replies.length > 0 ? ' chat-reply-composer' : ''}`}
+          aria-label={replies.length > 0 ? 'Message replies' : 'Canned replies'}
+        >
+          {(replies.length > 0 ? [] : conversation.cannedReplies ?? ['Okay.', "I'll get back to you."]).map(reply => (
             <button key={reply} onClick={() => setSentReplies(current => ({
               ...current,
               [conversation.id]: [...(current[conversation.id] ?? []), reply],

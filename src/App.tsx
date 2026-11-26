@@ -29,7 +29,6 @@ import { loadStoredParticipant } from './event/participant'
 import { useParticipantRunSync } from './event/useParticipantRunSync'
 import { NARRATIVE_CONTENT, hasPresented } from './game/narrative'
 import { OrganizerDashboard } from './components/admin/OrganizerDashboard'
-import { nextActionNavigationHint } from './components/applications/phoneInteractionUtils'
 
 const initialUnread: Record<AppId, number> = {
   messages: 2, social: 1, email: 2, browser: 0, contacts: 0, calls: 1, wallet: 0, settings: 0,
@@ -90,28 +89,6 @@ function App() {
     ? game.encounter?.characterId ?? game.storyCharacter?.id
     : selectedCharacter ?? game.storyCharacter?.id
   const characterData = getCharacterPhoneData(phoneCharacterId)
-  const completedScenarioInteractions = activeScenarioId
-    ? game.state.performedPhoneInteractions[activeScenarioId] ?? []
-    : []
-  const investigationNarrativeRead = game.scenario?.narrativeContent.every(content =>
-    game.state.narrative.presentedNarrative.includes(content.id),
-  ) ?? false
-  const navigationSurface = incomingCall ? 'calls' : openedApp
-  const hasInspectedScenarioEvidence = game.encounter?.artifacts.some(artifact =>
-    game.state.inspectedArtifacts.includes(artifact.id),
-  ) ?? false
-  const scenarioGuidanceAction = isEventMode
-    && game.state.phase === 'INVESTIGATION'
-    && investigationNarrativeRead
-    ? game.resolutionAction
-    : null
-  const scenarioNavigationHint = scenarioGuidanceAction && hasInspectedScenarioEvidence
-    ? nextActionNavigationHint(scenarioGuidanceAction.action, completedScenarioInteractions, navigationSurface)
-    : null
-  const scenarioContextHint = scenarioGuidanceAction?.action.contextHint ?? null
-  const scenarioPrompt = scenarioNavigationHint ?? scenarioContextHint
-  const scenarioNavigationKey = `${activeScenarioId ?? ''}:${completedScenarioInteractions.length}:${navigationSurface ?? 'home'}`
-
   useEffect(() => {
     setStage(game.horrorStage)
   }, [game.horrorStage, setStage])
@@ -288,9 +265,6 @@ function App() {
         game={game}
         data={characterData}
         accountSecurity={game.state.accountSecurity}
-        hints={game.hintsShown}
-        completedTasks={game.state.completedSecurityTasks}
-        onCompleteTask={game.actions.completeSecurityTask}
         securityAlerts={game.securityAlerts}
       />
       case 'livestream':
@@ -384,21 +358,12 @@ function App() {
               game.actions.enterPhone()
             }} />
           ) : openedApp || incomingCall ? (
-            <>
-              {renderApp()}
-              {scenarioPrompt && (
-                <aside key={scenarioNavigationKey} className="scenario-navigation-hint transient-context" role="status">
-                  {game.encounter?.title} · {scenarioPrompt}
-                </aside>
-              )}
-            </>
+            renderApp()
           ) : (
             <HomeScreen
               openApp={openApp}
               unread={unread}
               data={characterData}
-              navigationHint={scenarioPrompt}
-              navigationHintKey={scenarioNavigationKey}
             />
           )}
           {!isEventMode && !openingSequence && game.state.phase === 'CHARACTER_ASSIGNMENT' && (

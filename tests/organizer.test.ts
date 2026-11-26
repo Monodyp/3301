@@ -91,7 +91,36 @@ test('participant incident progress uses only that run and its assigned scenario
   assert.deepEqual(summarizeIncidentProgress([playerA, playerB]), { resolved: 1, total: 10 })
 })
 
-test('supporting actions and incorrect or incomplete resolutions do not count as resolved', () => {
+test('admin incident completion is independent of correctness and timestamps', () => {
+  const run = {
+    id: 'player-run',
+    scenarioIds: ['MK-R2', 'RF-R3', 'MK-A3', 'RF-A3', 'RF-O1'],
+    incidentProgress: [
+      { run_id: 'player-run', scenario_id: 'MK-R2', state: 'resolved', resolution_correct: true, resolved_at: null },
+      { run_id: 'player-run', scenario_id: 'RF-R3', state: 'completed', resolution_correct: false, resolved_at: null },
+      { run_id: 'player-run', scenario_id: 'MK-A3', state: 'assigned', resolution_correct: null, resolved_at: null },
+      { run_id: 'player-run', scenario_id: 'RF-A3', state: 'investigating', resolution_correct: true, resolved_at: null },
+      { run_id: 'player-run', scenario_id: 'RF-O1', state: 'resolved', resolution_correct: false, resolved_at: '2026-11-26T01:00:00Z' },
+    ],
+  }
+  const incidents = participantIncidentProgress(run.id, run.scenarioIds, run.incidentProgress)
+
+  assert.deepEqual(incidents.map(incident => incident.status), [
+    'resolved',
+    'resolved',
+    'unresolved',
+    'in-progress',
+    'resolved',
+  ])
+  assert.equal(incidents[0]?.resolvedAt, null)
+  assert.equal(incidents[1]?.resolvedAt, null)
+  assert.equal(incidents[0]?.resolutionCorrect, true)
+  assert.equal(incidents[1]?.resolutionCorrect, false)
+  assert.deepEqual(summarizeIncidentProgress([incidents]), { resolved: 3, total: 5 })
+  assert.equal(incidents[4]?.resolvedAt, '2026-11-26T01:00:00Z')
+})
+
+test('supporting or in-progress activity does not mark an incident resolved', () => {
   const incidents = participantIncidentProgress('run', ['RF-A1', 'RF-A2', 'RF-A3'], [
     {
       run_id: 'run',
@@ -114,18 +143,30 @@ test('supporting actions and incorrect or incomplete resolutions do not count as
     {
       run_id: 'run',
       scenario_id: 'RF-A3',
-      state: 'resolved',
-      resolution_correct: true,
+      state: 'investigating',
+      resolution_correct: null,
       resolved_at: null,
     },
   ])
 
   assert.deepEqual(incidents.map(incident => incident.status), [
     'in-progress',
-    'unresolved',
+    'resolved',
     'in-progress',
   ])
-  assert.deepEqual(summarizeIncidentProgress([incidents]), { resolved: 0, total: 3 })
+  assert.deepEqual(summarizeIncidentProgress([incidents]), { resolved: 1, total: 3 })
+})
+
+test('incident progress saves on resolution and failed saves remain visible and retryable', () => {
+  const sync = readFileSync(new URL('../src/event/useParticipantRunSync.ts', import.meta.url), 'utf8')
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  const dashboard = readFileSync(new URL('../src/components/admin/OrganizerDashboard.tsx', import.meta.url), 'utf8')
+
+  assert.match(sync, /saveParticipantRunProgress\(participant, progress\)/)
+  assert.match(sync, /hasUnpersistedResolution \? 0 : 250/)
+  assert.match(sync, /\.catch\(reason => \{[\s\S]*setStatus\('error'\)[\s\S]*setError\(/)
+  assert.match(app, /eventSync\.status === 'error'[\s\S]*eventSync\.error[\s\S]*eventSync\.retry/)
+  assert.match(dashboard, /'Correct resolution' : 'Incorrect resolution'/)
 })
 
 test('participant dashboard refreshes persisted incident progress and scopes it to each run', () => {

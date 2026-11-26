@@ -1,4 +1,4 @@
-import { ArrowLeft, RotateCw, Search } from 'lucide-react'
+import { ArrowLeft, MoreHorizontal, RotateCw, Search } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import type { CharacterPhoneData } from '../../data/characterData'
 import type { Character, Encounter, PhoneEvent } from '../../game/types'
@@ -22,6 +22,7 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
   const [query, setQuery] = useState('')
   const [searchedQuery, setSearchedQuery] = useState('')
   const [searchOutcome, setSearchOutcome] = useState<ReturnType<typeof trustedLocalSearch> | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const progressiveAd = progressiveAdvertisement(character, completedEncounterIds)
   const directoryPages = data?.browserPages ?? [
     { id: 'northbridge', title: 'Northbridge', url: 'northbridge.local', subtitle: 'Local network directory', body: 'Transit schedules, municipal records, and building maintenance notices.' },
@@ -79,6 +80,7 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
   const browserMenuActions = interactionsFor(game, 'browser', 'menu-item')
   const openPage = (page: { id: string; url: string }) => {
     setSelectedUrl(page.url)
+    setMenuOpen(false)
     onPhoneEvent?.({ kind: 'CONVERSATION_OPENED', app: 'browser', target: targetFor(page.id) })
   }
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
@@ -88,6 +90,7 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
     if (!searchTerm) return
     setSearchedQuery(searchTerm)
     setSelectedUrl(null)
+    setMenuOpen(false)
     setSearchOutcome(trustedLocalSearch(
       searchTerm,
       interaction?.expectedQuery,
@@ -99,13 +102,25 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
   return (
     <div className="app-content browser-app">
       <div className="browser-chrome">
-        <button><ArrowLeft size={18} /></button>
+        <button aria-label="Back to results" onClick={() => { setSelectedUrl(null); setMenuOpen(false) }}><ArrowLeft size={18} /></button>
         <form className="browser-address-form" onSubmit={submitSearch}>
           <Search size={14} />
           <input aria-label="Search or enter address" value={query} onChange={event => setQuery(event.target.value)} placeholder={selectedUrl ?? 'Search or enter address'} />
           {searches.length > 0 && <button type="submit" aria-label="Go to address">Go</button>}
         </form>
         <button><RotateCw size={16} /></button>
+        {browserMenuActions.length > 0 && Boolean(selected || (searchOutcome && searchOutcome.kind !== 'miss')) && (
+          <div className="browser-options">
+            <button aria-label="Page options" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><MoreHorizontal size={19} /></button>
+            {menuOpen && (
+              <div className="native-phone-menu" role="menu">
+                {browserMenuActions.map(interaction => (
+                  <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} role="menuitem" onClick={() => setMenuOpen(false)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div className="browser-page">
         {selected ? (
@@ -115,7 +130,6 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
             <h1>{selected.title}</h1>
             <p className="page-subtitle">{selected.url}</p>
             <div className="search-result"><strong>{selected.subtitle}</strong><p>{selected.body}</p></div>
-            {selected.suspicious && <button className="browser-warning">Suspicious local preview — no credentials collected</button>}
             {selected.url === 'lab.sanestrella.local' && installerVerification && (
               <section className="installer-test-results" aria-label="Installer test results">
                 <span>Program verification</span>
@@ -123,7 +137,6 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
                   <summary>Review test results</summary>
                   <p data-clue-target={installerVerification.id}>{installerVerification.detail}</p>
                 </details>
-                <p className="installer-results-hint">This directory cannot approve an attachment. Check another phone app before returning to the recruiter’s email.</p>
               </section>
             )}
             <ReadMarker key={targetFor(selected.id)} onRead={() => onPhoneEvent?.({ kind: 'MESSAGE_READ', app: 'browser', target: targetFor(selected.id) })} />
@@ -158,17 +171,10 @@ export function BrowserApp({ game, data, encounter, character, completedEncounte
                   parameters={{ query: searchedQuery }}
                   className="browser-inline-link"
                 >
-                  {searchOutcome.kind === 'listing' ? 'Open local listing' : 'Review directory result'}
+                  {searchOutcome.kind === 'listing' ? 'Open result' : 'View result'}
                 </ScenarioPhoneInteraction>
               )}
             </section>}
-            {searchedQuery && searchOutcome?.kind !== 'miss' && browserMenuActions.length > 0 && (
-              <div className="browser-native-actions" aria-label="Browser safety actions">
-                {browserMenuActions.map(interaction => (
-                  <ScenarioPhoneInteraction key={interaction.id} game={game} interaction={interaction} />
-                ))}
-              </div>
-            )}
             <div className="page-mark">N</div>
             <h1>{data?.profile.location ?? 'Northbridge'}</h1>
             <p className="page-subtitle">Fictional local directory</p>
